@@ -7,6 +7,7 @@ export default function QuestionEditor({
   onChange,
   onDelete,
   error,
+  questionNumber, // Add this prop
 }) {
   const [localQuestion, setLocalQuestion] = useState(question);
   const [localError, setLocalError] = useState("");
@@ -93,6 +94,11 @@ export default function QuestionEditor({
     <div className="bg-white p-6 rounded-lg shadow-sm mb-4 border border-gray-200">
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1 mr-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-medium text-gray-700">
+              Question {questionNumber}
+            </span>
+          </div>
           <textarea
             value={localQuestion.text}
             onChange={handleQuestionChange}

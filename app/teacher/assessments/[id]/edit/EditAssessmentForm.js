@@ -13,7 +13,12 @@ export default function EditAssessmentForm({ assessment }) {
     title: assessment?.title || "",
     description: assessment?.description || "",
     endDate: assessment?.endDate
-      ? assessment.endDate.toDate().toISOString().slice(0, 16)
+      ? new Date(
+          assessment.endDate.toDate().getTime() -
+            assessment.endDate.toDate().getTimezoneOffset() * 60000
+        )
+          .toISOString()
+          .slice(0, 16)
       : "",
     questions: assessment?.questions || [],
   });
@@ -74,7 +79,12 @@ export default function EditAssessmentForm({ assessment }) {
     setIsSubmitting(true);
 
     try {
-      const endDate = formData.endDate ? new Date(formData.endDate) : null;
+      // Add timezone offset back when creating the Date object
+      const localDate = new Date(formData.endDate);
+      const endDate = new Date(
+        localDate.getTime() + localDate.getTimezoneOffset() * 60000
+      );
+
       const updatedAssessment = {
         ...formData,
         endDate, // For Firebase
@@ -161,112 +171,119 @@ export default function EditAssessmentForm({ assessment }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-6 max-w-4xl mx-auto p-6 text-black"
+      className="relative min-h-screen pb-20" // Add these classes
     >
-      <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Title
-          </label>
-          <input
-            type="text"
-            name="title"
-            value={formData.title}
-            onChange={handleInputChange}
-            className={`mt-1 block w-full rounded-md border p-2 ${
-              errors.title ? "border-red-500" : "border-gray-300"
-            }`}
-            required
-          />
-          {errors.title && (
-            <p className="mt-1 text-sm text-red-500">{errors.title}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Description
-          </label>
-          <textarea
-            name="description"
-            value={formData.description}
-            onChange={handleInputChange}
-            className="mt-1 block w-full rounded-md border-gray-300 border p-2"
-            rows="3"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Due Date and Time
-          </label>
-          <input
-            type="datetime-local"
-            name="endDate"
-            value={formData.endDate}
-            onChange={handleInputChange}
-            className={`mt-1 block w-full rounded-md border p-2 ${
-              errors.endDate ? "border-red-500" : "border-gray-300"
-            }`}
-            required
-          />
-          {errors.endDate && (
-            <p className="mt-1 text-sm text-red-500">{errors.endDate}</p>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
+      <div className="space-y-6 max-w-4xl mx-auto p-6 text-black">
+        <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
+          <div>
             <label className="block text-sm font-medium text-gray-700">
-              Questions
+              Title
             </label>
-            <button
-              type="button"
-              onClick={addQuestion}
-              className="flex items-center text-blue-600 hover:text-blue-800"
-            >
-              <PlusIcon className="h-5 w-5 mr-1" />
-              Add Question
-            </button>
+            <input
+              type="text"
+              name="title"
+              value={formData.title}
+              onChange={handleInputChange}
+              className={`mt-1 block w-full rounded-md border p-2 ${
+                errors.title ? "border-red-500" : "border-gray-300"
+              }`}
+              required
+            />
+            {errors.title && (
+              <p className="mt-1 text-sm text-red-500">{errors.title}</p>
+            )}
           </div>
 
-          {errors.questions && (
-            <p className="text-sm text-red-500">{errors.questions}</p>
-          )}
-
-          {formData.questions.map((question, index) => (
-            <QuestionEditor
-              key={question.id}
-              question={question}
-              onChange={(updatedQuestion) =>
-                updateQuestion(index, updatedQuestion)
-              }
-              onDelete={() => removeQuestion(index)}
-              error={
-                errors[`question_${index}`] ||
-                errors[`question_${index}_options`]
-              }
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Description
+            </label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleInputChange}
+              className="mt-1 block w-full rounded-md border-gray-300 border p-2"
+              rows="3"
             />
-          ))}
-        </div>
+          </div>
 
-        <div className="flex justify-end space-x-4 pt-4 border-t">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
-            disabled={isSubmitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? "Saving..." : "Save Changes"}
-          </button>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Due Date and Time
+            </label>
+            <input
+              type="datetime-local"
+              name="endDate"
+              value={formData.endDate}
+              onChange={handleInputChange}
+              className={`mt-1 block w-full rounded-md border p-2 ${
+                errors.endDate ? "border-red-500" : "border-gray-300"
+              }`}
+              required
+            />
+            {errors.endDate && (
+              <p className="mt-1 text-sm text-red-500">{errors.endDate}</p>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <label className="block text-sm font-medium text-gray-700">
+                Questions
+              </label>
+            </div>
+
+            {errors.questions && (
+              <p className="text-sm text-red-500">{errors.questions}</p>
+            )}
+
+            {formData.questions.map((question, index) => (
+              <QuestionEditor
+                key={question.id}
+                question={question}
+                questionNumber={index + 1}
+                onChange={(updatedQuestion) =>
+                  updateQuestion(index, updatedQuestion)
+                }
+                onDelete={() => removeQuestion(index)}
+                error={
+                  errors[`question_${index}`] ||
+                  errors[`question_${index}_options`]
+                }
+              />
+            ))}
+          </div>
+
+          <div className="flex justify-end space-x-4 pt-4 border-t">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Sticky Add Question button */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex justify-center shadow-lg">
+        <button
+          type="button"
+          onClick={addQuestion}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          <PlusIcon className="h-5 w-5 mr-2" />
+          Add Question
+        </button>
       </div>
     </form>
   );

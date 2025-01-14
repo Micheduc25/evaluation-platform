@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { createAssessment } from "@/firebase/utils";
 import { toast } from "react-hot-toast";
 import QuestionEditor from "../assessments/[id]/edit/QuestionEditor";
+import { PlusIcon } from "@heroicons/react/24/outline";
 
 export default function CreateAssessmentModal({
   onClose,
@@ -192,7 +193,9 @@ export default function CreateAssessmentModal({
         </span>
 
         <div className="inline-block overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
-          <div className="px-4 pt-5 pb-4 bg-white sm:p-6 sm:pb-4">
+          <div className="px-4 pt-5 pb-20 bg-white sm:p-6 sm:pb-4">
+            {" "}
+            {/* Add pb-20 */}
             <div className="mb-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-bold text-gray-900">
@@ -226,8 +229,12 @@ export default function CreateAssessmentModal({
                 ></div>
               </div>
             </div>
-
-            <form onSubmit={handleSubmit} className="space-y-6 text-black">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-6 text-black relative"
+            >
+              {" "}
+              {/* Add relative */}
               {currentStep === 1 ? (
                 <div className="space-y-6 animate-fadeIn">
                   <div>
@@ -338,19 +345,13 @@ export default function CreateAssessmentModal({
                 <div className="space-y-6 animate-fadeIn">
                   <div className="flex justify-between items-center">
                     <h4 className="text-lg font-medium">Questions</h4>
-                    <button
-                      type="button"
-                      onClick={addQuestion}
-                      className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      Add Question
-                    </button>
                   </div>
 
                   {formData.questions.map((question, index) => (
                     <QuestionEditor
                       key={question.id}
                       question={question}
+                      questionNumber={index + 1}
                       onChange={(q) => updateQuestion(index, q)}
                       onDelete={() => removeQuestion(index)}
                       error={
@@ -360,12 +361,18 @@ export default function CreateAssessmentModal({
                     />
                   ))}
 
-                  {errors.questions && (
-                    <p className="text-sm text-red-500">{errors.questions}</p>
-                  )}
+                  <div className="flex justify-center items-center">
+                    <button
+                      type="button"
+                      onClick={addQuestion}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    >
+                      <PlusIcon className="h-5 w-5 mr-2" />
+                      Add Question
+                    </button>
+                  </div>
                 </div>
               )}
-
               <div className="flex justify-between mt-8">
                 {currentStep > 1 && (
                   <button
