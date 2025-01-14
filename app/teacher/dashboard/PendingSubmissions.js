@@ -97,13 +97,13 @@ export default function PendingSubmissions({
   return (
     <div className="space-y-4">
       {submissions.map(renderSubmissionCard)}
-      {submissions.length > 5 && (
+      {submissions.length > 0 && (
         <Link
-          href="/teacher/submissions"
+          href="/teacher/submissions?filter=pending"
           className="block text-center py-2 text-sm text-blue-600 hover:underline 
                    bg-blue-50 rounded-lg mt-4 font-medium"
         >
-          View All {submissions.length} Submissions
+          View All Pending Submissions ({submissions.length})
         </Link>
       )}
     </div>

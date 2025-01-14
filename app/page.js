@@ -47,7 +47,7 @@ export default function Home() {
             <div className="hidden md:block relative">
               <div className="absolute inset-0 bg-blue-500 rounded-lg opacity-10 blur-3xl"></div>
               <Image
-                src="/dashboard-preview.png"
+                src="/dashboard-mini.jpeg"
                 alt="Platform Preview"
                 width={600}
                 height={400}

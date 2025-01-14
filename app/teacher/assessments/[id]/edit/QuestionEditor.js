@@ -82,6 +82,13 @@ export default function QuestionEditor({
     onChange(newQuestion);
   };
 
+  const handlePointsChange = (value) => {
+    const points = parseInt(value) || 1;
+    const newQuestion = { ...localQuestion, points };
+    setLocalQuestion(newQuestion);
+    onChange(newQuestion);
+  };
+
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm mb-4 border border-gray-200">
       <div className="flex justify-between items-start mb-4">
@@ -148,6 +155,18 @@ export default function QuestionEditor({
 
       {questionType === "multiple_choice" ? (
         <div className="space-y-3">
+          <div className="mb-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Points for this question
+            </label>
+            <input
+              type="number"
+              value={localQuestion.points || 1}
+              onChange={(e) => handlePointsChange(e.target.value)}
+              className="mt-1 w-24 p-2 border rounded-md"
+              min="1"
+            />
+          </div>
           {localQuestion.options.map((option, index) => (
             <div key={index} className="flex items-center space-x-3">
               <input

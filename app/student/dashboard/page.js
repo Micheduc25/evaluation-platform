@@ -7,6 +7,7 @@ import {
   getStudentUpcomingExams,
   getStudentRecentResults,
   getAvailableAssessments,
+  getStudentPendingResults,
 } from "@/firebase/utils";
 import AssessmentCard from "./AssessmentCard";
 import {
@@ -22,6 +23,7 @@ export default function DashboardPage() {
   const [availableAssessments, setAvailableAssessments] = useState([]);
   const [upcomingExams, setUpcomingExams] = useState([]);
   const [recentResults, setRecentResults] = useState([]);
+  const [pendingResults, setPendingResults] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
@@ -31,17 +33,20 @@ export default function DashboardPage() {
 
       try {
         setIsLoading(true);
-        const [stats, available, upcoming, results] = await Promise.all([
-          getStudentStats(user.uid),
-          getAvailableAssessments(user.uid),
-          getStudentUpcomingExams(user.uid),
-          getStudentRecentResults(user.uid),
-        ]);
+        const [stats, available, upcoming, results, pending] =
+          await Promise.all([
+            getStudentStats(user.uid),
+            getAvailableAssessments(user.uid),
+            getStudentUpcomingExams(user.uid),
+            getStudentRecentResults(user.uid),
+            getStudentPendingResults(user.uid),
+          ]);
 
         setStats(stats);
         setAvailableAssessments(available);
         setUpcomingExams(upcoming);
         setRecentResults(results);
+        setPendingResults(pending);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         toast.error("Failed to load dashboard data");
@@ -177,34 +182,76 @@ export default function DashboardPage() {
 
         {/* Recent Results */}
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">Recent Results</h2>
+          <h2 className="text-xl font-semibold mb-4">Assessment Results</h2>
           <div className="space-y-4">
-            {recentResults.map((result) => (
-              <div
-                key={result.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-              >
-                <div>
-                  <h3 className="font-medium text-gray-900">{result.title}</h3>
-                  <p className="text-sm text-gray-600">
-                    {result.submittedAt.toDate().toLocaleDateString()}
-                  </p>
-                </div>
-                <span
-                  className={`text-lg font-semibold ${
-                    (result.score / result.totalPoints) * 100 >= 90
-                      ? "text-green-600"
-                      : (result.score / result.totalPoints) * 100 >= 80
-                      ? "text-blue-600"
-                      : "text-orange-600"
-                  }`}
-                >
-                  {Math.round((result.score / result.totalPoints) * 100)}%
-                </span>
+            {/* Pending Results */}
+            {pendingResults.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-gray-500 mb-2">
+                  Pending Review
+                </h3>
+                {pendingResults.map((result) => (
+                  <div
+                    key={result.id}
+                    className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg mb-2 hover:bg-yellow-100 cursor-pointer"
+                    onClick={() => router.push(`/student/results/${result.id}`)}
+                  >
+                    <div>
+                      <h3 className="font-medium text-gray-900">
+                        {result.title}
+                      </h3>
+                      <div className="flex items-center text-sm text-gray-600">
+                        <ClockIcon className="h-4 w-4 mr-1" />
+                        <span>
+                          Submitted{" "}
+                          {result.submittedAt.toDate().toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-sm font-medium text-yellow-600">
+                      Pending Review
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-            {recentResults.length === 0 && (
-              <p className="text-center text-gray-500">No recent results</p>
+            )}
+
+            {/* Completed Results */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">
+                Completed
+              </h3>
+              {recentResults.map((result) => (
+                <div
+                  key={result.id}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                  onClick={() => router.push(`/student/results/${result.id}`)}
+                >
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      {result.title}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {result.submittedAt.toDate().toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-lg font-semibold ${
+                      (result.score / result.totalPoints) * 100 >= 90
+                        ? "text-green-600"
+                        : (result.score / result.totalPoints) * 100 >= 80
+                        ? "text-blue-600"
+                        : "text-orange-600"
+                    }`}
+                  >
+                    {Math.round((result.score / result.totalPoints) * 100)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {pendingResults.length === 0 && recentResults.length === 0 && (
+              <p className="text-center text-gray-500">No results available</p>
             )}
           </div>
         </div>

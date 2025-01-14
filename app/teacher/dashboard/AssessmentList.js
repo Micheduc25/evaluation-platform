@@ -85,8 +85,12 @@ export default function AssessmentList({ assessments, isLoading }) {
                 </td>
                 <td className="px-6 py-4">
                   <div className="text-sm text-gray-500">
+                    {console.log(
+                      "assessment date ========>",
+                      assessment.endDate
+                    )}
                     {assessment.endDate &&
-                      assessment.endDate.toDate().toLocaleDateString()}
+                      assessment.endDate?.toDate().toLocaleDateString()}
                   </div>
                 </td>
                 <td className="px-6 py-4">

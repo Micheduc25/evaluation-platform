@@ -32,14 +32,32 @@ export default function EditAssessmentForm({ assessment }) {
     if (formData.questions.length === 0) {
       newErrors.questions = "At least one question is required";
     }
+
+    let totalAssignedPoints = 0;
     formData.questions.forEach((question, index) => {
       if (!question.text.trim()) {
         newErrors[`question_${index}`] = "Question text is required";
       }
-      if (question.options.some((opt) => !opt.trim())) {
-        newErrors[`question_${index}_options`] = "All options must be filled";
+
+      if (question.type === "multiple_choice") {
+        if (!question.points || question.points < 1) {
+          newErrors[`question_${index}_points`] =
+            "Points must be greater than 0";
+        }
+        totalAssignedPoints += question.points || 1;
+
+        if (question.options.some((opt) => !opt.trim())) {
+          newErrors[`question_${index}_options`] = "All options must be filled";
+        }
+      } else if (question.type === "open_answer") {
+        totalAssignedPoints += question.maxPoints || 1;
       }
     });
+
+    if (totalAssignedPoints > assessment.totalPoints) {
+      newErrors.totalPoints = `Total assigned points (${totalAssignedPoints}) cannot exceed total assessment points (${assessment.totalPoints})`;
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -93,6 +111,7 @@ export default function EditAssessmentForm({ assessment }) {
         {
           id: Date.now(),
           text: "",
+          type: "multiple_choice",
           options: [""],
           correctAnswer: 0,
         },

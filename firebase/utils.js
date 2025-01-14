@@ -14,6 +14,7 @@ import {
   orderBy,
   limit,
   increment,
+  runTransaction,
 } from "firebase/firestore";
 
 // User document helpers
@@ -78,11 +79,14 @@ export const updateUserProfile = async (uid, userData) => {
 // Assessment helpers
 export const createAssessment = async (assessmentData) => {
   try {
-    const docRef = await addDoc(collection(db, "assessments"), {
-      ...assessmentData,
-      createdAt: new Date(),
+    return await runTransaction(db, async (transaction) => {
+      const docRef = doc(collection(db, "assessments"));
+      transaction.set(docRef, {
+        ...assessmentData,
+        createdAt: new Date(),
+      });
+      return docRef.id;
     });
-    return docRef.id;
   } catch (error) {
     console.error("Error creating assessment:", error);
     throw error;
@@ -137,52 +141,72 @@ export const updateAssessment = async (assessmentId, assessmentData) => {
 
 export const submitAssessment = async (submissionId, submissionData) => {
   try {
-    const submissionRef = doc(db, "submissions", submissionId);
-    const assessmentRef = doc(db, "assessments", submissionData.assessmentId);
+    return await runTransaction(db, async (transaction) => {
+      const submissionRef = doc(db, "submissions", submissionId);
+      const assessmentRef = doc(db, "assessments", submissionData.assessmentId);
 
-    // Calculate score for multiple choice questions
-    const assessment = await getDoc(assessmentRef);
-    const assessmentData = assessment.data();
+      const assessmentDoc = await transaction.get(assessmentRef);
+      if (!assessmentDoc.exists()) {
+        throw new Error("Assessment not found");
+      }
 
-    console.log("Assessment Data:=======>", assessmentData);
+      const assessmentData = assessmentDoc.data();
+      let score = 0;
+      let pendingGrading = false;
 
-    console.log("Submission Data:=======>", submissionData);
+      console.log("questions:", submissionData.answers);
 
-    let score = 0;
-    let pendingGrading = false;
+      for (const answer of submissionData.answers) {
+        console.log("Answer questionId:", answer);
+        const question = assessmentData.questions.find(
+          (q) => q.id === answer.questionId
+        );
 
-    submissionData.answers.forEach((answer) => {
-      const question = assessmentData.questions.find(
-        (q) => q.id === answer.questionId
-      );
-
-      console.log("Question:=======>", question);
-      if (question) {
-        if (question.type === "multiple_choice") {
-          if (question.correctAnswer === answer.selectedAnswer.value) {
-            score += question.points;
+        if (question) {
+          if (question.type === "multiple_choice") {
+            if (
+              answer.selectedAnswer &&
+              question.correctAnswer === answer.selectedAnswer.value
+            ) {
+              score += question.points;
+            }
+          } else if (question.type === "open_answer") {
+            pendingGrading = true;
           }
-        } else if (question.type === "open_answer") {
-          pendingGrading = true;
         }
       }
-    });
 
-    // Update submission with score and status
-    await updateDoc(submissionRef, {
-      ...submissionData,
-      score,
-      pendingGrading,
-      status: pendingGrading ? "pending_review" : "completed",
-      completedAt: new Date(),
-    });
+      // Update submission with score and status
+      transaction.update(submissionRef, {
+        ...submissionData,
+        score,
+        pendingGrading,
+        status: pendingGrading ? "pending_review" : "completed",
+        completedAt: new Date(),
+      });
 
-    // Update assessment submission count
-    await updateDoc(assessmentRef, {
-      submissionCount: increment(1),
-    });
+      // Update assessment submission count
+      transaction.update(assessmentRef, {
+        submissionCount: increment(1),
+      });
 
-    return { score, pendingGrading };
+      // Find and delete any other in-progress submissions
+      const submissionsQuery = query(
+        collection(db, "submissions"),
+        where("assessmentId", "==", submissionData.assessmentId),
+        where("studentId", "==", submissionData.studentId),
+        where("status", "==", "in_progress")
+      );
+
+      const submissionsSnap = await getDocs(submissionsQuery);
+      submissionsSnap.docs.forEach((doc) => {
+        if (doc.id !== submissionId) {
+          transaction.delete(doc.ref);
+        }
+      });
+
+      return { score, pendingGrading };
+    });
   } catch (error) {
     console.error("Error submitting assessment:", error);
     throw error;
@@ -193,17 +217,26 @@ export const gradeOpenAnswerQuestion = async (
   submissionId,
   questionId,
   points,
-  feedback
+  feedback = ""
 ) => {
   try {
     const submissionRef = doc(db, "submissions", submissionId);
+
     const submissionSnap = await getDoc(submissionRef);
     const submission = submissionSnap.data();
 
     // Update the answer with grading
     const updatedAnswers = submission.answers.map((answer) => {
+      console.log(typeof answer.questionId, typeof questionId);
+
       if (answer.questionId === questionId) {
-        return { ...answer, points, feedback, graded: true };
+        return {
+          ...answer,
+          points,
+          feedback,
+          graded: true,
+          gradedAt: new Date(),
+        };
       }
       return answer;
     });
@@ -214,20 +247,34 @@ export const gradeOpenAnswerQuestion = async (
       0
     );
 
-    // Check if all open answers are graded
+    // Check if all questions that need grading are now graded
     const allGraded = updatedAnswers.every(
-      (answer) => answer.type === "multiple_choice" || answer.graded
+      (answer) =>
+        answer.type === "multiple_choice" || // Multiple choice answers are auto-graded
+        answer.graded === true // Open answers must be manually graded
     );
 
-    await updateDoc(submissionRef, {
+    const updateData = {
       answers: updatedAnswers,
       score,
       status: allGraded ? "completed" : "pending_review",
       pendingGrading: !allGraded,
-      gradedAt: new Date(),
-    });
+      lastGradedAt: new Date(),
+    };
 
-    return { score, status: allGraded ? "completed" : "pending_review" };
+    console.log("Update data:", updateData);
+
+    if (allGraded) {
+      updateData.completedAt = new Date();
+    }
+
+    await updateDoc(submissionRef, updateData);
+
+    return {
+      score,
+      status: allGraded ? "completed" : "pending_review",
+      allGraded,
+    };
   } catch (error) {
     console.error("Error grading question:", error);
     throw error;
@@ -328,40 +375,49 @@ export const getAvailableAssessments = async (studentId) => {
 
 export const startAssessment = async (assessmentId, studentId) => {
   try {
-    const assessment = await getAssessment(assessmentId);
-    if (!assessment) throw new Error("Assessment not found");
+    return await runTransaction(db, async (transaction) => {
+      // Check for existing in-progress submission
 
-    const now = new Date();
-    if (now > assessment.endDate.toDate()) {
-      throw new Error("Assessment has expired");
-    }
+      const submissionQuery = query(
+        collection(db, "submissions"),
+        where("assessmentId", "==", assessmentId),
+        where("studentId", "==", studentId),
+        where("status", "==", "in_progress"),
+        limit(1)
+      );
 
-    // check if submission already exists
-    const submissionQuery = query(
-      collection(db, "submissions"),
-      where("assessmentId", "==", assessmentId),
-      where("studentId", "==", studentId),
-      limit(1)
-    );
+      const submissionSnapshot = await getDocs(submissionQuery);
+      if (!submissionSnapshot.empty) {
+        return submissionSnapshot.docs[0].id;
+      }
 
-    const submissionSnapshot = await getDocs(submissionQuery);
-    console.log("Submission Query:=======>", submissionSnapshot);
-    if (!submissionSnapshot.empty) {
-      throw new Error("You have already started this assessment");
-    }
+      // Verify assessment exists and hasn't expired
+      const assessmentRef = doc(db, "assessments", assessmentId);
+      const assessmentDoc = await transaction.get(assessmentRef);
 
-    // Create a submission document with initial state
-    const submission = await addDoc(collection(db, "submissions"), {
-      assessmentId,
-      studentId,
-      startedAt: now,
-      status: "in_progress",
-      answers: [],
-      score: 0,
-      isGraded: false,
+      if (!assessmentDoc.exists()) {
+        throw new Error("Assessment not found");
+      }
+
+      const now = new Date();
+      if (now > assessmentDoc.data().endDate.toDate()) {
+        throw new Error("Assessment has expired");
+      }
+
+      // Create new submission
+      const newSubmissionRef = doc(collection(db, "submissions"));
+      transaction.set(newSubmissionRef, {
+        assessmentId,
+        studentId,
+        startedAt: now,
+        status: "in_progress",
+        answers: [],
+        score: 0,
+        isGraded: false,
+      });
+
+      return newSubmissionRef.id;
     });
-
-    return submission.id;
   } catch (error) {
     console.error("Error starting assessment:", error);
     throw error;
@@ -505,13 +561,166 @@ export const getPendingSubmissions = async (teacherId) => {
         studentName: studentDoc.data()?.displayName || "Unknown Student",
         assessmentTitle: assessmentDoc.data()?.title || "Unknown Assessment",
       });
-
-      console.log("Submission:=======>", submissions);
     }
 
     return submissions;
   } catch (error) {
     console.error("Error getting pending submissions:", error);
+    throw error;
+  }
+};
+
+export const getAllSubmissions = async (teacherId) => {
+  try {
+    // First get all assessments created by this teacher
+    const assessmentsQuery = query(
+      collection(db, "assessments"),
+      where("createdBy", "==", teacherId)
+    );
+    const assessmentsSnap = await getDocs(assessmentsQuery);
+    const assessmentIds = assessmentsSnap.docs.map((doc) => doc.id);
+
+    if (assessmentIds.length === 0) return [];
+
+    // Get all submissions for these assessments
+    const submissionsQuery = query(
+      collection(db, "submissions"),
+      where("assessmentId", "in", assessmentIds)
+    );
+
+    const submissionsSnap = await getDocs(submissionsQuery);
+    const submissions = [];
+
+    // Get student details and assessment details for each submission
+    for (const submissionDoc of submissionsSnap.docs) {
+      const submissionData = submissionDoc.data();
+      const [studentDoc, assessmentDoc] = await Promise.all([
+        getDoc(doc(db, "users", submissionData.studentId)),
+        getDoc(doc(db, "assessments", submissionData.assessmentId)),
+      ]);
+
+      submissions.push({
+        id: submissionDoc.id,
+        ...submissionData,
+        studentName: studentDoc.data()?.displayName || "Unknown Student",
+        assessmentTitle: assessmentDoc.data()?.title || "Unknown Assessment",
+        totalPoints: assessmentDoc.data()?.totalPoints || 0,
+      });
+    }
+
+    return submissions;
+  } catch (error) {
+    console.error("Error getting all submissions:", error);
+    throw error;
+  }
+};
+
+// New function to handle incomplete assessments
+export const handleIncompleteAssessment = async (
+  submissionId,
+  answers,
+  timeSpent
+) => {
+  try {
+    const submissionRef = doc(db, "submissions", submissionId);
+    const submission = await getDoc(submissionRef);
+
+    if (!submission.exists()) return;
+
+    const data = submission.data();
+    if (data.status !== "in_progress") return;
+
+    await updateDoc(submissionRef, {
+      answers: Object.entries(answers).map(([questionId, answer]) => ({
+        questionId: Number(questionId),
+        selectedAnswer: answer,
+        timeSpent: timeSpent[questionId] || 0,
+      })),
+      lastSaved: new Date(),
+      status: "incomplete",
+      totalTimeSpent: Object.values(timeSpent).reduce((a, b) => a + b, 0),
+    });
+  } catch (error) {
+    console.error("Error handling incomplete assessment:", error);
+  }
+};
+
+// New function to fetch detailed assessment results
+export const getAssessmentResults = async (submissionId) => {
+  try {
+    const submissionRef = doc(db, "submissions", submissionId);
+    const submissionSnap = await getDoc(submissionRef);
+
+    if (!submissionSnap.exists()) {
+      throw new Error("Submission not found");
+    }
+
+    const submissionData = submissionSnap.data();
+    const assessmentSnap = await getDoc(
+      doc(db, "assessments", submissionData.assessmentId)
+    );
+
+    if (!assessmentSnap.exists()) {
+      throw new Error("Assessment not found");
+    }
+
+    const assessmentData = assessmentSnap.data();
+
+    return {
+      submission: {
+        id: submissionSnap.id,
+        ...submissionData,
+      },
+      assessment: {
+        id: assessmentSnap.id,
+        ...assessmentData,
+      },
+      details: {
+        totalQuestions: assessmentData.questions.length,
+        completedAt: submissionData.completedAt,
+        totalScore: submissionData.score,
+        maxScore: assessmentData.totalPoints,
+        percentage: Math.round(
+          (submissionData.score / assessmentData.totalPoints) * 100
+        ),
+        timeSpent: submissionData.totalTimeSpent || 0,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching assessment results:", error);
+    throw error;
+  }
+};
+
+// New function to fetch pending results for a student
+export const getStudentPendingResults = async (studentId) => {
+  try {
+    const submissionsQuery = query(
+      collection(db, "submissions"),
+      where("studentId", "==", studentId),
+      where("status", "==", "pending_review"),
+      orderBy("submittedAt", "desc")
+    );
+
+    const submissionsSnap = await getDocs(submissionsQuery);
+    const submissions = [];
+
+    for (const doc of submissionsSnap.docs) {
+      const submission = doc.data();
+      const assessment = await getAssessment(submission.assessmentId);
+      submissions.push({
+        id: doc.id,
+        title: assessment.title,
+        score: submission.score,
+        totalPoints: assessment.totalPoints,
+        submittedAt: submission.submittedAt,
+        status: "pending_review",
+      });
+    }
+
+    return submissions;
+  } catch (error) {
+    console.error("Error getting pending results:", error);
     throw error;
   }
 };

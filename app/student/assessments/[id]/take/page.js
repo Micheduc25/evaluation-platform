@@ -1,11 +1,12 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react"; // Add useCallback import
 import { useParams, useRouter } from "next/navigation";
 import { useSelector, useDispatch } from "react-redux";
 import {
   getAssessment,
   startAssessment,
   submitAssessment,
+  handleIncompleteAssessment,
 } from "@/firebase/utils";
 import { setLoading, setError } from "@/store/slices/assessmentSlice";
 import AssessmentTimer from "./AssessmentTimer";
@@ -37,12 +38,173 @@ export default function TakeAssessmentPage() {
   const [lastQuestionChangeTime, setLastQuestionChangeTime] = useState(
     Date.now()
   );
+  const [tabViolations, setTabViolations] = useState(0);
+  const MAX_VIOLATIONS = 2; // Number of warnings before auto-submission
 
-  // Initialize assessment and handle auto-save
+  const initializationRef = useRef(false);
+
+  // Add refs to track latest state values
+  const stateRef = useRef({
+    assessment: null,
+    answers: {},
+    submissionId: null,
+    tabViolations: 0,
+    timeSpentPerQuestion: {},
+    lastQuestionChangeTime: Date.now(),
+    currentQuestionIndex: 0,
+  });
+
+  // Update refs whenever state changes
+  useEffect(() => {
+    stateRef.current = {
+      assessment,
+      answers,
+      submissionId,
+      tabViolations,
+      timeSpentPerQuestion,
+      lastQuestionChangeTime,
+      currentQuestionIndex,
+    };
+  }, [
+    assessment,
+    answers,
+    submissionId,
+    tabViolations,
+    timeSpentPerQuestion,
+    lastQuestionChangeTime,
+    currentQuestionIndex,
+  ]);
+
+  // Add this before the effects
+  const preventCopyPaste = (e) => {
+    e.preventDefault();
+    return false;
+  };
+
+  // Move handleSubmit to useEffect
   useEffect(() => {
     let autoSaveTimer;
+    let hidden, visibilityChange;
 
+    // Set up visibility API variables
+    if (typeof document.hidden !== "undefined") {
+      hidden = "hidden";
+      visibilityChange = "visibilitychange";
+    } else if (typeof document.msHidden !== "undefined") {
+      hidden = "msHidden";
+      visibilityChange = "msvisibilitychange";
+    } else if (typeof document.webkitHidden !== "undefined") {
+      hidden = "webkitHidden";
+      visibilityChange = "webkitvisibilitychange";
+    }
+
+    const handleSubmit = async (forced = false) => {
+      if (
+        !forced &&
+        !confirm("Are you sure you want to submit your assessment?")
+      ) {
+        return;
+      }
+
+      const currentState = stateRef.current;
+
+      setSubmitting(true);
+      try {
+        const finalTimeSpent = {
+          ...currentState.timeSpentPerQuestion,
+          [currentState.assessment?.questions[currentState.currentQuestionIndex]
+            ?.id]:
+            (currentState.timeSpentPerQuestion[
+              currentState.assessment?.questions[
+                currentState.currentQuestionIndex
+              ]?.id
+            ] || 0) +
+            Math.round(
+              (Date.now() - currentState.lastQuestionChangeTime) / 1000
+            ),
+        };
+
+        const result = await submitAssessment(currentState.submissionId, {
+          assessmentId: id,
+          studentId: user.uid,
+          answers: Object.entries(currentState.answers).map(
+            ([questionId, answer]) => ({
+              questionId: Number(questionId),
+              selectedAnswer: answer,
+              timeSpent: finalTimeSpent[questionId] || 0,
+            })
+          ),
+          submittedAt: new Date(),
+          totalTimeSpent: Object.values(finalTimeSpent).reduce(
+            (a, b) => a + b,
+            0
+          ),
+          questions: currentState.assessment?.questions,
+          forcedSubmission: forced,
+          tabViolations: currentState.tabViolations,
+        });
+
+        toast.success(
+          forced
+            ? "Assessment submitted automatically due to tab switching violations"
+            : "Assessment submitted successfully"
+        );
+
+        router.push(result?.redirectUrl || "/student/dashboard");
+      } catch (error) {
+        console.error("Error submitting assessment:", error);
+        toast.error("Failed to submit assessment. Please try again.");
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document[hidden]) {
+        const currentState = stateRef.current;
+        setTabViolations((prev) => {
+          const newCount = prev + 1;
+          if (newCount >= MAX_VIOLATIONS) {
+            toast.error(
+              "Maximum tab switches exceeded. Assessment will be submitted."
+            );
+            handleSubmit(true);
+          } else {
+            toast.error(
+              `Warning: Switching tabs is not allowed. Warning ${newCount}/${MAX_VIOLATIONS}`
+            );
+          }
+          return newCount;
+        });
+      }
+    };
+
+    const handleBeforeUnload = (e) => {
+      const currentState = stateRef.current;
+      if (
+        currentState.submissionId &&
+        Object.keys(currentState.answers).length > 0
+      ) {
+        handleSubmit(true);
+        e.preventDefault();
+        e.returnValue =
+          "Leaving this page will submit your assessment automatically.";
+      }
+    };
+
+    // Set up event listeners
+    document.addEventListener(visibilityChange, handleVisibilityChange);
+    window.addEventListener("blur", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    document.addEventListener("copy", preventCopyPaste);
+    document.addEventListener("paste", preventCopyPaste);
+    document.addEventListener("contextmenu", preventCopyPaste);
+
+    // Initialize assessment and start auto-save
     const initializeAssessment = async () => {
+      if (initializationRef.current) return;
+
       try {
         dispatch(setLoading(true));
         const assessmentData = await getAssessment(id);
@@ -51,17 +213,43 @@ export default function TakeAssessmentPage() {
           throw new Error("Assessment not found");
         }
 
-        if (new Date() > assessmentData.endDate.toDate()) {
+        if (new Date() > new Date(assessmentData.endDate.seconds * 1000)) {
           throw new Error("Assessment has expired");
         }
 
-        const submissionId = await startAssessment(id, user.uid);
-        setSubmissionId(submissionId);
+        const submissionIdNew = await startAssessment(id, user.uid);
+
+        // Initialize answers object with null values for all questions
+        const initialAnswers = {};
+        assessmentData.questions.forEach((q) => {
+          initialAnswers[q.id] = null;
+        });
+
+        // Set all the state at once to avoid multiple re-renders
+        initializationRef.current = true;
+        setSubmissionId(submissionIdNew);
         setAssessment(assessmentData);
 
-        const initialAnswers = {};
-        assessmentData.questions.forEach((q) => (initialAnswers[q.id] = null));
         setAnswers(initialAnswers);
+        setTimeSpentPerQuestion({});
+        setLastQuestionChangeTime(Date.now());
+        setCurrentQuestionIndex(0);
+        setMarkedQuestions(new Set());
+        setTabViolations(0);
+
+        // Start auto-save timer
+        autoSaveTimer = setInterval(async () => {
+          if (submissionId && Object.keys(answers).length > 0) {
+            try {
+              setAutoSaveStatus("saving");
+              await updateSubmissionProgress(submissionId, answers);
+              setAutoSaveStatus("saved");
+            } catch (error) {
+              console.error("Auto-save failed:", error);
+              setAutoSaveStatus("error");
+            }
+          }
+        }, 30000);
       } catch (error) {
         dispatch(setError(error.message));
         toast.error(error.message);
@@ -71,32 +259,29 @@ export default function TakeAssessmentPage() {
       }
     };
 
-    if (user) {
+    // Initialize assessment if user is available
+    if (user && !initializationRef.current) {
       initializeAssessment();
     }
 
-    // Auto-save answers every 30 seconds
-    autoSaveTimer = setInterval(async () => {
-      if (submissionId && Object.keys(answers).length > 0) {
-        try {
-          setAutoSaveStatus("saving");
-          await updateSubmissionProgress(submissionId, answers);
-          setAutoSaveStatus("saved");
-        } catch (error) {
-          console.error("Auto-save failed:", error);
-          setAutoSaveStatus("error");
-        }
-      }
-    }, 30000);
+    return () => {
+      document.removeEventListener(visibilityChange, handleVisibilityChange);
+      window.removeEventListener("blur", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("copy", preventCopyPaste);
+      document.removeEventListener("paste", preventCopyPaste);
+      document.removeEventListener("contextmenu", preventCopyPaste);
 
-    return () => clearInterval(autoSaveTimer);
-  }, [id, user, dispatch, router]);
+      clearInterval(autoSaveTimer);
+      initializationRef.current = false;
+    };
+  }, [id, user, router]);
 
-  // Update time spent when changing questions
+  // Keep the question timer effect separate as it has different concerns
   useEffect(() => {
     const updateTimeSpent = () => {
       const now = Date.now();
-      const timeSpent = Math.round((now - lastQuestionChangeTime) / 1000); // Convert to seconds
+      const timeSpent = Math.round((now - lastQuestionChangeTime) / 1000);
 
       if (assessment?.questions[currentQuestionIndex]) {
         const questionId = assessment.questions[currentQuestionIndex].id;
@@ -107,12 +292,26 @@ export default function TakeAssessmentPage() {
       }
     };
 
-    // Update time spent when unmounting or changing questions
     return () => {
       updateTimeSpent();
       setLastQuestionChangeTime(Date.now());
     };
   }, [currentQuestionIndex, assessment, lastQuestionChangeTime]);
+
+  // Add cleanup function
+  const handleCleanup = async () => {
+    if (submissionId && Object.keys(answers).length > 0) {
+      const finalTimeSpent = {
+        ...timeSpentPerQuestion,
+        [assessment?.questions[currentQuestionIndex]?.id]:
+          (timeSpentPerQuestion[
+            assessment?.questions[currentQuestionIndex]?.id
+          ] || 0) + Math.round((Date.now() - lastQuestionChangeTime) / 1000),
+      };
+
+      await handleIncompleteAssessment(submissionId, answers, finalTimeSpent);
+    }
+  };
 
   // Handle answer selection with auto-save
   const handleAnswerSelect = async (questionId, answerIndex) => {
@@ -179,46 +378,6 @@ export default function TakeAssessmentPage() {
     return "unanswered";
   };
 
-  const handleSubmit = async () => {
-    if (!confirm("Are you sure you want to submit your assessment?")) return;
-
-    // Update time spent for the current question before submitting
-    const finalTimeSpent = {
-      ...timeSpentPerQuestion,
-      [assessment.questions[currentQuestionIndex].id]:
-        (timeSpentPerQuestion[assessment.questions[currentQuestionIndex].id] ||
-          0) + Math.round((Date.now() - lastQuestionChangeTime) / 1000),
-    };
-
-    setSubmitting(true);
-    try {
-      const result = await submitAssessment(submissionId, {
-        assessmentId: id,
-        studentId: user.uid,
-        answers: Object.entries(answers).map(([questionId, answer]) => ({
-          questionId: Number(questionId),
-          selectedAnswer: answer,
-          timeSpent: finalTimeSpent[questionId] || 0,
-        })),
-        submittedAt: new Date(),
-        totalTimeSpent: Object.values(finalTimeSpent).reduce(
-          (a, b) => a + b,
-          0
-        ),
-      });
-
-      toast.success("Assessment submitted successfully");
-
-      // Redirect to results page if available, otherwise to dashboard
-      router.push(result?.redirectUrl || "/student/dashboard");
-    } catch (error) {
-      console.error("Error submitting assessment:", error);
-      toast.error("Failed to submit assessment. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -268,7 +427,7 @@ export default function TakeAssessmentPage() {
     switch (question.type) {
       case "multiple_choice":
         return (
-          <div className="space-y-3">
+          <div className="space-y-3" onCopy={(e) => e.preventDefault()}>
             {question.options.map((option, idx) => (
               <label
                 key={idx}
@@ -288,7 +447,12 @@ export default function TakeAssessmentPage() {
                   }
                   className="h-4 w-4 text-blue-600"
                 />
-                <span className="ml-3">{option}</span>
+                <span
+                  className="ml-3 select-none"
+                  onCopy={(e) => e.preventDefault()}
+                >
+                  {option}
+                </span>
               </label>
             ))}
           </div>
@@ -302,11 +466,14 @@ export default function TakeAssessmentPage() {
               onChange={(e) =>
                 handleAnswerInput(question.id, e.target.value, "open_answer")
               }
+              onPaste={(e) => e.preventDefault()}
+              onCopy={(e) => e.preventDefault()}
               placeholder="Type your answer here..."
               className="w-full p-4 border-2 rounded-lg min-h-[200px] focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               rows={8}
+              spellCheck={false}
             />
-            <div className="flex justify-between text-sm text-gray-500">
+            <div className="flex justify-between text-sm text-gray-500 select-none">
               <span>
                 Characters: {(answers[question.id]?.value || "").length}
               </span>
@@ -316,12 +483,16 @@ export default function TakeAssessmentPage() {
         );
 
       default:
-        return <p>Unsupported question type</p>;
+        return <p className="select-none">Unsupported question type</p>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className="min-h-screen bg-gray-50"
+      onCopy={(e) => e.preventDefault()}
+      onPaste={(e) => e.preventDefault()}
+    >
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
@@ -334,7 +505,7 @@ export default function TakeAssessmentPage() {
             </div>
             <AssessmentTimer
               duration={assessment?.duration}
-              onTimeUp={handleSubmit}
+              onTimeUp={() => handleSubmit(true)}
               className="text-xl font-bold"
             />
           </div>
@@ -501,7 +672,7 @@ export default function TakeAssessmentPage() {
                 Cancel
               </button>
               <button
-                onClick={handleSubmit}
+                onClick={(e) => handleSubmit(false)}
                 disabled={submitting}
                 className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
               >

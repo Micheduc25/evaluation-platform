@@ -1,67 +1,107 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { getDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase/client";
 import { gradeOpenAnswerQuestion } from "@/firebase/utils";
 import { toast } from "react-hot-toast";
+import { PencilIcon, CheckIcon } from "@heroicons/react/24/outline";
 
-export default function GradingInterface({ submissionId, assessmentId }) {
+export default function GradingInterface() {
+  const router = useRouter();
+  const params = useParams();
+  const assessmentId = params.id;
+  const submissionId = params.submissionId;
+
   const [submission, setSubmission] = useState(null);
   const [assessment, setAssessment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const router = useRouter();
+  const [localGrades, setLocalGrades] = useState({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
-    console.log("submission data ======>", submissionId, assessmentId);
     const fetchData = async () => {
+      if (!assessmentId || !submissionId) {
+        toast.error("Invalid URL parameters");
+        router.push("/teacher/dashboard");
+        return;
+      }
+
       try {
+        setLoading(true);
         const [submissionDoc, assessmentDoc] = await Promise.all([
           getDoc(doc(db, "submissions", submissionId)),
           getDoc(doc(db, "assessments", assessmentId)),
         ]);
 
+        if (!submissionDoc.exists() || !assessmentDoc.exists()) {
+          throw new Error("Submission or assessment not found");
+        }
+
         setSubmission(submissionDoc.data());
         setAssessment(assessmentDoc.data());
       } catch (error) {
-        toast.error("Error loading submission");
+        toast.error(error.message || "Error loading submission");
         console.error(error);
+        router.push("/teacher/dashboard");
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [submissionId, assessmentId]);
+  }, [assessmentId, submissionId, router]);
 
-  const handleGrade = async (questionId, points, feedback) => {
+  const handleLocalGradeChange = (questionId, field, value) => {
+    setLocalGrades((prev) => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        [field]: value,
+        modified: true,
+      },
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSaveGrade = async (questionId) => {
+    const gradeData = localGrades[questionId];
+
+    console.log(gradeData);
+
+    if (!gradeData?.modified) return;
+
     setSaving(true);
     try {
-      const result = await gradeOpenAnswerQuestion(
+      await gradeOpenAnswerQuestion(
         submissionId,
-        questionId,
-        points,
-        feedback
+        Number(questionId),
+        parseInt(gradeData.points),
+        gradeData.feedback
       );
 
-      // Update local state
+      // Update local submission state
       setSubmission((prev) => ({
         ...prev,
         answers: prev.answers.map((answer) =>
           answer.questionId === questionId
-            ? { ...answer, points, feedback, graded: true }
+            ? {
+                ...answer,
+                points: parseInt(gradeData.points),
+                feedback: gradeData.feedback,
+                graded: true,
+              }
             : answer
         ),
-        score: result.score,
-        status: result.status,
+      }));
+
+      setLocalGrades((prev) => ({
+        ...prev,
+        [questionId]: { ...prev[questionId], modified: false },
       }));
 
       toast.success("Grade saved successfully");
-
-      if (result.status === "completed") {
-        router.push(`/teacher/assessments/${assessmentId}/submissions`);
-      }
     } catch (error) {
       toast.error("Failed to save grade");
       console.error(error);
@@ -70,14 +110,120 @@ export default function GradingInterface({ submissionId, assessmentId }) {
     }
   };
 
+  const handleSaveAll = async () => {
+    setSaving(true);
+    try {
+      console.log(localGrades);
+      const modifiedQuestions = [];
+      for (const [questionId, data] of Object.entries(localGrades)) {
+        if (data.modified) {
+          modifiedQuestions.push([questionId, data]);
+        }
+      }
+
+      // Save each modified question one by one
+      for (const [questionId, data] of modifiedQuestions) {
+        await gradeOpenAnswerQuestion(
+          submissionId,
+          Number(questionId),
+          parseInt(data.points),
+          data.feedback
+        );
+      }
+
+      // Update local submission state after all saves are complete
+      setSubmission((prev) => ({
+        ...prev,
+        answers: prev.answers.map((answer) => {
+          const gradeData = localGrades[answer.questionId];
+          if (gradeData?.modified) {
+            return {
+              ...answer,
+              points: parseInt(gradeData.points),
+              feedback: gradeData.feedback,
+              graded: true,
+            };
+          }
+          return answer;
+        }),
+      }));
+
+      // Clear modified flags
+      setLocalGrades((prev) => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach((key) => {
+          updated[key] = { ...updated[key], modified: false };
+        });
+        return updated;
+      });
+
+      setHasUnsavedChanges(false);
+      toast.success("All changes saved successfully");
+
+      // Check if all questions are now graded
+      const allGraded = submission.answers.every(
+        (answer) =>
+          answer.graded ||
+          (localGrades[answer.questionId] &&
+            !localGrades[answer.questionId].modified)
+      );
+
+      if (allGraded) {
+        const shouldRedirect = window.confirm(
+          "All questions have been graded. Return to submissions list?"
+        );
+        if (shouldRedirect) {
+          router.push(`/teacher/assessments/${assessmentId}/submissions`);
+        }
+      }
+    } catch (error) {
+      toast.error("Failed to save some changes");
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-2xl font-bold mb-6">Grade Submission</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">Grade Submission</h2>
+          {hasUnsavedChanges && (
+            <button
+              onClick={handleSaveAll}
+              disabled={saving}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+              ) : (
+                <CheckIcon className="h-4 w-4" />
+              )}
+              Save All Changes
+            </button>
+          )}
+        </div>
 
         {submission.answers.map((answer, index) => {
           const question = assessment.questions.find(
@@ -85,8 +231,14 @@ export default function GradingInterface({ submissionId, assessmentId }) {
           );
           if (question?.type !== "open_answer") return null;
 
+          const localGrade = localGrades[answer.questionId] || {};
+          const isModified = localGrade.modified;
+
           return (
-            <div key={answer.questionId} className="mb-8 p-4 border rounded">
+            <div
+              key={answer.questionId}
+              className="mb-8 p-4 border rounded relative"
+            >
               <div className="mb-4">
                 <h3 className="font-medium">Question {index + 1}</h3>
                 <p className="text-gray-600">{question.text}</p>
@@ -95,7 +247,9 @@ export default function GradingInterface({ submissionId, assessmentId }) {
               <div className="mb-4">
                 <h4 className="font-medium">Student's Answer:</h4>
                 <p className="whitespace-pre-wrap bg-gray-50 p-3 rounded">
-                  {answer.selectedAnswer}
+                  {answer.selectedAnswer?.value ||
+                    answer.selectedAnswer ||
+                    "No answer provided"}
                 </p>
               </div>
 
@@ -113,16 +267,16 @@ export default function GradingInterface({ submissionId, assessmentId }) {
                     type="number"
                     min="0"
                     max={question.maxPoints}
-                    defaultValue={answer.points}
+                    value={localGrade.points ?? answer.points ?? 0}
                     onChange={(e) => {
                       const points = Math.min(
                         Math.max(0, parseInt(e.target.value) || 0),
                         question.maxPoints
                       );
-                      handleGrade(
+                      handleLocalGradeChange(
                         answer.questionId,
-                        points,
-                        answer.feedback || ""
+                        "points",
+                        points
                       );
                     }}
                     className="w-full p-2 border rounded"
@@ -133,11 +287,11 @@ export default function GradingInterface({ submissionId, assessmentId }) {
                     Feedback
                   </label>
                   <textarea
-                    defaultValue={answer.feedback}
+                    value={localGrade.feedback ?? answer.feedback ?? ""}
                     onChange={(e) =>
-                      handleGrade(
+                      handleLocalGradeChange(
                         answer.questionId,
-                        answer.points || 0,
+                        "feedback",
                         e.target.value
                       )
                     }
@@ -146,6 +300,17 @@ export default function GradingInterface({ submissionId, assessmentId }) {
                   />
                 </div>
               </div>
+
+              {isModified && (
+                <button
+                  onClick={() => handleSaveGrade(answer.questionId)}
+                  disabled={saving}
+                  className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <PencilIcon className="h-4 w-4" />
+                  Save Changes
+                </button>
+              )}
             </div>
           );
         })}
