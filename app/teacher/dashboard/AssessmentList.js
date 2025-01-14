@@ -2,7 +2,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDispatch } from "react-redux";
 import { deleteAssessment } from "@/firebase/utils";
-import { PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
+import {
+  PencilIcon,
+  TrashIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+} from "@heroicons/react/24/outline";
 import { removeAssessment } from "@/store/slices/assessmentSlice";
 import { toast } from "react-hot-toast";
 
@@ -10,6 +15,8 @@ export default function AssessmentList({ assessments, isLoading }) {
   const dispatch = useDispatch();
   const router = useRouter();
   const [deletingId, setDeletingId] = useState(null);
+  const [sortField, setSortField] = useState("createdAt");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   const handleEdit = (id) => {
     router.push(`/teacher/assessments/${id}/edit`);
@@ -29,6 +36,57 @@ export default function AssessmentList({ assessments, isLoading }) {
         setDeletingId(null);
       }
     }
+  };
+
+  const formatEndDate = (endDate) => {
+    if (!endDate) return "";
+    // Handle both Firestore Timestamp and ISO string formats
+    const date =
+      typeof endDate === "string" ? new Date(endDate) : endDate?.toDate();
+    return date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const getSortedAssessments = () => {
+    if (!assessments) return [];
+
+    return [...assessments].sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+
+      // Handle date fields
+      if (["endDate", "createdAt"].includes(sortField)) {
+        aVal = typeof aVal === "string" ? new Date(aVal) : aVal?.toDate();
+        bVal = typeof bVal === "string" ? new Date(bVal) : bVal?.toDate();
+      }
+
+      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+  };
+
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return null;
+    return sortDirection === "asc" ? (
+      <ChevronUpIcon className="h-4 w-4 inline ml-1" />
+    ) : (
+      <ChevronDownIcon className="h-4 w-4 inline ml-1" />
+    );
   };
 
   if (isLoading) {
@@ -55,17 +113,26 @@ export default function AssessmentList({ assessments, isLoading }) {
         <table className="min-w-full divide-y divide-gray-200">
           <thead>
             <tr>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                Title
+              <th
+                className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-900"
+                onClick={() => handleSort("title")}
+              >
+                Title <SortIcon field="title" />
               </th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                Due Date
+              <th
+                className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-900"
+                onClick={() => handleSort("endDate")}
+              >
+                Due Date <SortIcon field="endDate" />
               </th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                Submissions
+              <th
+                className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-900"
+                onClick={() => handleSort("submissionCount")}
+              >
+                Submissions <SortIcon field="submissionCount" />
               </th>
               <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Actions
@@ -73,7 +140,7 @@ export default function AssessmentList({ assessments, isLoading }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {assessments.map((assessment) => (
+            {getSortedAssessments().map((assessment) => (
               <tr
                 key={assessment.id}
                 className="hover:bg-gray-50 transition-colors"
@@ -85,17 +152,16 @@ export default function AssessmentList({ assessments, isLoading }) {
                 </td>
                 <td className="px-6 py-4">
                   <div className="text-sm text-gray-500">
-                    {console.log(
-                      "assessment date ========>",
-                      assessment.endDate
-                    )}
-                    {assessment.endDate &&
-                      assessment.endDate?.toDate().toLocaleDateString()}
+                    {formatEndDate(assessment.endDate)}
                   </div>
                 </td>
                 <td className="px-6 py-4">
                   <StatusBadge
-                    date={assessment.endDate && assessment.endDate.toDate()}
+                    date={
+                      typeof assessment.endDate === "string"
+                        ? new Date(assessment.endDate)
+                        : assessment.endDate?.toDate()
+                    }
                   />
                 </td>
                 <td className="px-6 py-4">
@@ -134,7 +200,7 @@ export default function AssessmentList({ assessments, isLoading }) {
 
 function StatusBadge({ date }) {
   const now = new Date();
-  const isActive = date > now;
+  const isActive = date && date > now;
   const status = isActive ? "Active" : "Expired";
   const colors = {
     Active: "bg-green-50 text-green-700 ring-green-600/20",

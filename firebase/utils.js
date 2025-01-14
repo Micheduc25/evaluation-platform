@@ -81,10 +81,18 @@ export const createAssessment = async (assessmentData) => {
   try {
     return await runTransaction(db, async (transaction) => {
       const docRef = doc(collection(db, "assessments"));
-      transaction.set(docRef, {
+
+      // Ensure dates are proper Date objects for Firestore
+      const dataToStore = {
         ...assessmentData,
         createdAt: new Date(),
-      });
+        endDate:
+          assessmentData.endDate instanceof Date
+            ? assessmentData.endDate
+            : new Date(assessmentData.endDate),
+      };
+
+      transaction.set(docRef, dataToStore);
       return docRef.id;
     });
   } catch (error) {
@@ -126,10 +134,18 @@ export const deleteAssessment = async (assessmentId) => {
 export const updateAssessment = async (assessmentId, assessmentData) => {
   try {
     const docRef = doc(db, "assessments", assessmentId);
-    await updateDoc(docRef, {
+
+    // Ensure endDate is a proper Date object for Firestore
+    const dataToUpdate = {
       ...assessmentData,
+      endDate:
+        assessmentData.endDate instanceof Date
+          ? assessmentData.endDate
+          : new Date(assessmentData.endDate),
       updatedAt: new Date(),
-    });
+    };
+
+    await updateDoc(docRef, dataToUpdate);
     return assessmentId;
   } catch (error) {
     console.error("Error updating assessment:", error);

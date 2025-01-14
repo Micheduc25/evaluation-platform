@@ -12,7 +12,9 @@ export default function EditAssessmentForm({ assessment }) {
   const [formData, setFormData] = useState({
     title: assessment?.title || "",
     description: assessment?.description || "",
-    endDate: assessment?.endDate?.toDate().toISOString().split("T")[0] || "",
+    endDate: assessment?.endDate
+      ? assessment.endDate.toDate().toISOString().slice(0, 16)
+      : "",
     questions: assessment?.questions || [],
   });
   const [errors, setErrors] = useState({});
@@ -70,17 +72,29 @@ export default function EditAssessmentForm({ assessment }) {
     }
 
     setIsSubmitting(true);
+
     try {
+      const endDate = formData.endDate ? new Date(formData.endDate) : null;
       const updatedAssessment = {
         ...formData,
-        endDate: new Date(formData.endDate),
-        updatedAt: new Date(),
+        endDate, // For Firebase
       };
 
       await updateAssessment(assessment.id, updatedAssessment);
+
+      // Create a serializable version for Redux
+      const serializedAssessment = {
+        ...updatedAssessment,
+        endDate: endDate ? endDate.toISOString() : null,
+      };
+
       dispatch(
-        updateAssessmentState({ id: assessment.id, ...updatedAssessment })
+        updateAssessmentState({
+          id: assessment.id,
+          ...serializedAssessment,
+        })
       );
+
       toast.success("Assessment updated successfully");
       router.push("/teacher/dashboard");
     } catch (error) {
@@ -184,10 +198,10 @@ export default function EditAssessmentForm({ assessment }) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700">
-            Due Date
+            Due Date and Time
           </label>
           <input
-            type="date"
+            type="datetime-local"
             name="endDate"
             value={formData.endDate}
             onChange={handleInputChange}

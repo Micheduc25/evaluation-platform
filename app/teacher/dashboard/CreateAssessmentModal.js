@@ -99,22 +99,29 @@ export default function CreateAssessmentModal({
       const pointsPerQuestion = Math.floor(
         formData.totalPoints / formData.questions.length
       );
+
+      // Ensure endDate is a proper Date object
+      const endDate = formData.endDate ? new Date(formData.endDate) : null;
+
       const assessmentData = {
         ...formData,
         questions: formData.questions.map((q) => ({
           ...q,
           points: pointsPerQuestion,
         })),
+        endDate, // This will be a proper Date object
         createdBy: user.uid,
-        createdAt: new Date(),
-        endDate: new Date(formData.endDate),
         status: "active",
         submissionCount: 0,
       };
 
       const assessmentId = await createAssessment(assessmentData);
       toast.success("Assessment created successfully");
-      onAssessmentCreated({ id: assessmentId, ...assessmentData });
+      onAssessmentCreated({
+        id: assessmentId,
+        ...assessmentData,
+        endDate: endDate.toISOString(), // Serialize for Redux/client usage
+      });
       onClose();
     } catch (error) {
       console.error("Error creating assessment:", error);
