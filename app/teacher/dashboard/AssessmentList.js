@@ -1,4 +1,8 @@
-import { useState } from "react";
+"use client";
+import { useState, useEffect } from "react";
+import { useSelector } from "react-redux";
+import { getTeacherClassrooms } from "@/firebase/utils";
+import { ClockIcon, UserGroupIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import { useDispatch } from "react-redux";
 import { deleteAssessment } from "@/firebase/utils";
@@ -17,6 +21,36 @@ export default function AssessmentList({ assessments, isLoading }) {
   const [deletingId, setDeletingId] = useState(null);
   const [sortField, setSortField] = useState("createdAt");
   const [sortDirection, setSortDirection] = useState("desc");
+  const user = useSelector((state) => state.auth.user);
+  const [classrooms, setClassrooms] = useState([]);
+  const [selectedClassroom, setSelectedClassroom] = useState("all");
+  const [filteredAssessments, setFilteredAssessments] = useState(assessments);
+
+  useEffect(() => {
+    loadClassrooms();
+  }, [user]);
+
+  useEffect(() => {
+    filterAssessments();
+  }, [selectedClassroom, assessments]);
+
+  const loadClassrooms = async () => {
+    if (!user) return;
+    const data = await getTeacherClassrooms(user.uid);
+    setClassrooms(data);
+  };
+
+  const filterAssessments = () => {
+    if (selectedClassroom === "all") {
+      setFilteredAssessments(assessments);
+    } else {
+      setFilteredAssessments(
+        assessments.filter(
+          (assessment) => assessment.classroomId === selectedClassroom
+        )
+      );
+    }
+  };
 
   const handleEdit = (id) => {
     router.push(`/teacher/assessments/${id}/edit`);
@@ -110,6 +144,21 @@ export default function AssessmentList({ assessments, isLoading }) {
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="overflow-x-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold">Your Assessments</h2>
+          <select
+            value={selectedClassroom}
+            onChange={(e) => setSelectedClassroom(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Classrooms</option>
+            {classrooms.map((classroom) => (
+              <option key={classroom.id} value={classroom.id}>
+                {classroom.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <table className="min-w-full divide-y divide-gray-200">
           <thead>
             <tr>

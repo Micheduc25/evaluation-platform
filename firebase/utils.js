@@ -29,6 +29,7 @@ export const createUserDocument = async (user, additionalData = {}) => {
     createdAt: new Date(),
     lastLogin: new Date(),
     role: "student", // default role
+    emailVerified: user.emailVerified,
     ...additionalData,
   };
 
@@ -90,6 +91,7 @@ export const createAssessment = async (assessmentData) => {
           assessmentData.endDate instanceof Date
             ? assessmentData.endDate
             : new Date(assessmentData.endDate),
+        classroomId: assessmentData.classroomId, // Add classroom association
       };
 
       transaction.set(docRef, dataToStore);
@@ -340,12 +342,14 @@ export const getTeacherStats = async (teacherId) => {
     const uniqueStudents = new Set(
       submissionsSnap.docs.map((doc) => doc.data().studentId)
     );
+    console.log(submissionsSnap.docs.length);
 
     return {
       totalAssessments: assessmentsSnap.size,
       activeStudents: uniqueStudents.size,
-      pendingReviews: submissionsSnap.docs.filter((doc) => !doc.data().isGraded)
-        .length,
+      pendingReviews: submissionsSnap.docs.filter(
+        (doc) => doc.data().pendingGrading
+      ).length,
     };
   } catch (error) {
     console.error("Error getting teacher stats:", error);
@@ -355,15 +359,25 @@ export const getTeacherStats = async (teacherId) => {
 
 export const getAvailableAssessments = async (studentId) => {
   try {
+    // Get student's classrooms
+    const membershipsQuery = query(
+      collection(db, "classroom_memberships"),
+      where("studentId", "==", studentId)
+    );
+    const memberships = await getDocs(membershipsQuery);
+    const classroomIds = memberships.docs.map((doc) => doc.data().classroomId);
+
+    if (classroomIds.length === 0) return [];
+
     const now = new Date();
-    const assessmentsRef = collection(db, "assessments");
-    const q = query(
-      assessmentsRef,
+    const assessmentsQuery = query(
+      collection(db, "assessments"),
+      where("classroomId", "in", classroomIds),
       where("endDate", ">=", now),
       orderBy("endDate", "asc")
     );
 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await getDocs(assessmentsQuery);
     const assessments = [];
 
     for (const doc of querySnapshot.docs) {
@@ -442,18 +456,32 @@ export const startAssessment = async (assessmentId, studentId) => {
 
 export const getStudentStats = async (studentId) => {
   try {
+    const classroomIds = await getStudentClassroomIds(studentId);
+    if (classroomIds.length === 0) {
+      return {
+        completedExams: 0,
+        averageScore: 0,
+        totalSubmissions: 0,
+      };
+    }
+
+    // Get all submissions from the student
     const submissionsQuery = query(
       collection(db, "submissions"),
       where("studentId", "==", studentId)
     );
-
     const submissionsSnap = await getDocs(submissionsQuery);
-    const submissions = submissionsSnap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
 
-    // Calculate statistics
+    // Filter submissions to only include those from enrolled classrooms
+    const submissions = [];
+    for (const doc of submissionsSnap.docs) {
+      const submission = doc.data();
+      const assessment = await getAssessment(submission.assessmentId);
+      if (assessment && classroomIds.includes(assessment.classroomId)) {
+        submissions.push({ ...submission, id: doc.id });
+      }
+    }
+
     const completedSubmissions = submissions.filter(
       (sub) => sub.status === "completed"
     );
@@ -479,9 +507,13 @@ export const getStudentStats = async (studentId) => {
 
 export const getStudentUpcomingExams = async (studentId) => {
   try {
+    const classroomIds = await getStudentClassroomIds(studentId);
+    if (classroomIds.length === 0) return [];
+
     const now = new Date();
     const assessmentsQuery = query(
       collection(db, "assessments"),
+      where("classroomId", "in", classroomIds),
       where("endDate", ">=", now),
       orderBy("endDate", "asc"),
       limit(5)
@@ -512,12 +544,14 @@ export const getStudentUpcomingExams = async (studentId) => {
 
 export const getStudentRecentResults = async (studentId) => {
   try {
+    const classroomIds = await getStudentClassroomIds(studentId);
+    if (classroomIds.length === 0) return [];
+
     const submissionsQuery = query(
       collection(db, "submissions"),
       where("studentId", "==", studentId),
       where("status", "==", "completed"),
-      orderBy("submittedAt", "desc"),
-      limit(5)
+      orderBy("submittedAt", "desc")
     );
 
     const submissionsSnap = await getDocs(submissionsQuery);
@@ -526,16 +560,20 @@ export const getStudentRecentResults = async (studentId) => {
     for (const doc of submissionsSnap.docs) {
       const submission = doc.data();
       const assessment = await getAssessment(submission.assessmentId);
-      submissions.push({
-        id: doc.id,
-        title: assessment.title,
-        score: submission.score,
-        totalPoints: assessment.totalPoints,
-        submittedAt: submission.submittedAt,
-      });
+
+      // Only include results from enrolled classrooms
+      if (assessment && classroomIds.includes(assessment.classroomId)) {
+        submissions.push({
+          id: doc.id,
+          title: assessment.title,
+          score: submission.score,
+          totalPoints: assessment.totalPoints,
+          submittedAt: submission.submittedAt,
+        });
+      }
     }
 
-    return submissions;
+    return submissions.slice(0, 5); // Return only the 5 most recent results
   } catch (error) {
     console.error("Error getting recent results:", error);
     throw error;
@@ -711,6 +749,9 @@ export const getAssessmentResults = async (submissionId) => {
 // New function to fetch pending results for a student
 export const getStudentPendingResults = async (studentId) => {
   try {
+    const classroomIds = await getStudentClassroomIds(studentId);
+    if (classroomIds.length === 0) return [];
+
     const submissionsQuery = query(
       collection(db, "submissions"),
       where("studentId", "==", studentId),
@@ -724,19 +765,283 @@ export const getStudentPendingResults = async (studentId) => {
     for (const doc of submissionsSnap.docs) {
       const submission = doc.data();
       const assessment = await getAssessment(submission.assessmentId);
-      submissions.push({
-        id: doc.id,
-        title: assessment.title,
-        score: submission.score,
-        totalPoints: assessment.totalPoints,
-        submittedAt: submission.submittedAt,
-        status: "pending_review",
-      });
+
+      // Only include results from enrolled classrooms
+      if (assessment && classroomIds.includes(assessment.classroomId)) {
+        submissions.push({
+          id: doc.id,
+          title: assessment.title,
+          score: submission.score,
+          totalPoints: assessment.totalPoints,
+          submittedAt: submission.submittedAt,
+          status: "pending_review",
+        });
+      }
     }
 
     return submissions;
   } catch (error) {
     console.error("Error getting pending results:", error);
+    throw error;
+  }
+};
+
+// Classroom Management Functions
+
+export const getStudentClassroomIds = async (studentId) => {
+  try {
+    const membershipsQuery = query(
+      collection(db, "classroom_memberships"),
+      where("studentId", "==", studentId)
+    );
+    const memberships = await getDocs(membershipsQuery);
+
+    return memberships.docs.map((doc) => doc.data().classroomId);
+  } catch (error) {
+    console.error("Error getting student classrooms:", error);
+    throw error;
+  }
+};
+
+export const createClassroom = async (teacherId, classroomData) => {
+  try {
+    const classroomRef = doc(collection(db, "classrooms"));
+
+    // Generate a unique join code using timestamp and random elements
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 5);
+    const joinCode = (timestamp.slice(-3) + random).toUpperCase();
+
+    await setDoc(classroomRef, {
+      ...classroomData,
+      teacherId,
+      joinCode,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      studentCount: 0,
+    });
+
+    return { id: classroomRef.id, joinCode };
+  } catch (error) {
+    console.error("Error creating classroom:", error);
+    throw error;
+  }
+};
+
+export const updateClassroom = async (classroomId, updateData) => {
+  try {
+    const classroomRef = doc(db, "classrooms", classroomId);
+    await updateDoc(classroomRef, {
+      ...updateData,
+      updatedAt: new Date(),
+    });
+  } catch (error) {
+    console.error("Error updating classroom:", error);
+    throw error;
+  }
+};
+
+export const deleteClassroom = async (classroomId) => {
+  try {
+    return await runTransaction(db, async (transaction) => {
+      const classroomRef = doc(db, "classrooms", classroomId);
+
+      // Delete all memberships
+      const membershipsQuery = query(
+        collection(db, "classroom_memberships"),
+        where("classroomId", "==", classroomId)
+      );
+      const memberships = await getDocs(membershipsQuery);
+      memberships.forEach((membershipDoc) => {
+        transaction.delete(membershipDoc.ref);
+      });
+
+      // Delete the classroom
+      transaction.delete(classroomRef);
+    });
+  } catch (error) {
+    console.error("Error deleting classroom:", error);
+    throw error;
+  }
+};
+
+export const addStudentToClassroom = async (classroomId, studentId) => {
+  try {
+    return await runTransaction(db, async (transaction) => {
+      // Check if membership already exists
+      const membershipQuery = query(
+        collection(db, "classroom_memberships"),
+        where("classroomId", "==", classroomId),
+        where("studentId", "==", studentId)
+      );
+      const membershipDocs = await getDocs(membershipQuery);
+
+      if (!membershipDocs.empty) {
+        throw new Error("Student is already in this classroom");
+      }
+
+      // Create new membership
+      const membershipRef = doc(collection(db, "classroom_memberships"));
+      transaction.set(membershipRef, {
+        classroomId,
+        studentId,
+        joinedAt: new Date(),
+      });
+
+      // Update student count
+      const classroomRef = doc(db, "classrooms", classroomId);
+      transaction.update(classroomRef, {
+        studentCount: increment(1),
+      });
+    });
+  } catch (error) {
+    console.error("Error adding student to classroom:", error);
+    throw error;
+  }
+};
+
+export const removeStudentFromClassroom = async (classroomId, studentId) => {
+  try {
+    return await runTransaction(db, async (transaction) => {
+      const membershipQuery = query(
+        collection(db, "classroom_memberships"),
+        where("classroomId", "==", classroomId),
+        where("studentId", "==", studentId)
+      );
+      const membershipDocs = await getDocs(membershipQuery);
+
+      if (membershipDocs.empty) {
+        throw new Error("Student is not in this classroom");
+      }
+
+      // Delete membership
+      transaction.delete(membershipDocs.docs[0].ref);
+
+      // Update student count
+      const classroomRef = doc(db, "classrooms", classroomId);
+      transaction.update(classroomRef, {
+        studentCount: increment(-1),
+      });
+    });
+  } catch (error) {
+    console.error("Error removing student from classroom:", error);
+    throw error;
+  }
+};
+
+export const joinClassroomByCode = async (joinCode, studentId) => {
+  try {
+    const classroomQuery = query(
+      collection(db, "classrooms"),
+      where("joinCode", "==", joinCode)
+    );
+    const classroomDocs = await getDocs(classroomQuery);
+
+    if (classroomDocs.empty) {
+      throw new Error("Invalid join code");
+    }
+
+    const classroomId = classroomDocs.docs[0].id;
+    await addStudentToClassroom(classroomId, studentId);
+
+    return classroomId;
+  } catch (error) {
+    console.error("Error joining classroom:", error);
+    throw error;
+  }
+};
+
+export const getTeacherClassrooms = async (teacherId) => {
+  try {
+    const classroomsQuery = query(
+      collection(db, "classrooms"),
+      where("teacherId", "==", teacherId)
+    );
+    const classrooms = await getDocs(classroomsQuery);
+
+    return classrooms.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+  } catch (error) {
+    console.error("Error getting teacher classrooms:", error);
+    throw error;
+  }
+};
+
+export const getStudentClassrooms = async (studentId) => {
+  try {
+    const membershipsQuery = query(
+      collection(db, "classroom_memberships"),
+      where("studentId", "==", studentId)
+    );
+    const memberships = await getDocs(membershipsQuery);
+
+    const classrooms = await Promise.all(
+      memberships.docs.map(async (classRoomDoc) => {
+        const classroomDoc = await getDoc(
+          doc(db, "classrooms", classRoomDoc.data().classroomId)
+        );
+        return {
+          id: classroomDoc.id,
+          ...classroomDoc.data(),
+        };
+      })
+    );
+
+    return classrooms;
+  } catch (error) {
+    console.error("Error getting student classrooms:", error);
+    throw error;
+  }
+};
+
+// Add these new functions to your existing utils.js file
+
+export const getClassroomDetails = async (classroomId) => {
+  try {
+    const classroomRef = doc(db, "classrooms", classroomId);
+    const classroomDoc = await getDoc(classroomRef);
+
+    if (!classroomDoc.exists()) {
+      throw new Error("Classroom not found");
+    }
+
+    return {
+      id: classroomDoc.id,
+      ...classroomDoc.data(),
+    };
+  } catch (error) {
+    console.error("Error getting classroom details:", error);
+    throw error;
+  }
+};
+
+export const getClassroomStudents = async (classroomId) => {
+  try {
+    const membershipsQuery = query(
+      collection(db, "classroom_memberships"),
+      where("classroomId", "==", classroomId)
+    );
+
+    const membershipsSnap = await getDocs(membershipsQuery);
+    const studentIds = membershipsSnap.docs.map((doc) => doc.data().studentId);
+
+    if (studentIds.length === 0) return [];
+
+    const studentsData = await Promise.all(
+      studentIds.map(async (studentId) => {
+        const userDoc = await getDoc(doc(db, "users", studentId));
+        return {
+          id: userDoc.id,
+          ...userDoc.data(),
+        };
+      })
+    );
+
+    return studentsData;
+  } catch (error) {
+    console.error("Error getting classroom students:", error);
     throw error;
   }
 };

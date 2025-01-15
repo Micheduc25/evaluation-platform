@@ -35,7 +35,7 @@ export default function TeacherDashboard() {
         setStats(statsData);
         setPendingSubmissions(pendingSubmissions);
 
-        console.log("pending subs =====>", pendingSubmissions);
+        console.log("stats =====>", statsData);
       } catch (error) {
         console.error("Error loading dashboard:", error);
       } finally {

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
-import { createAssessment } from "@/firebase/utils";
+import { createAssessment, getTeacherClassrooms } from "@/firebase/utils";
 import { toast } from "react-hot-toast";
 import QuestionEditor from "../assessments/[id]/edit/QuestionEditor";
 import { PlusIcon } from "@heroicons/react/24/outline";
@@ -13,11 +13,13 @@ export default function CreateAssessmentModal({
   const user = useSelector((state) => state.auth.user);
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [classrooms, setClassrooms] = useState([]);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     duration: 60,
     totalPoints: 100,
+    classroomId: "",
     endDate: "",
     questions: [],
   });
@@ -31,6 +33,19 @@ export default function CreateAssessmentModal({
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [onClose]);
+
+  useEffect(() => {
+    loadClassrooms();
+  }, [user]);
+
+  const loadClassrooms = async () => {
+    if (!user) return;
+    const data = await getTeacherClassrooms(user.uid);
+    setClassrooms(data);
+    if (data.length > 0) {
+      setFormData((prev) => ({ ...prev, classroomId: data[0].id }));
+    }
+  };
 
   const validateStep1 = () => {
     const newErrors = {};
@@ -113,6 +128,7 @@ export default function CreateAssessmentModal({
         endDate, // This will be a proper Date object
         createdBy: user.uid,
         status: "active",
+
         submissionCount: 0,
       };
 
@@ -237,6 +253,24 @@ export default function CreateAssessmentModal({
               {/* Add relative */}
               {currentStep === 1 ? (
                 <div className="space-y-6 animate-fadeIn">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Classroom
+                    </label>
+                    <select
+                      name="classroomId"
+                      value={formData.classroomId}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      {classrooms.map((classroom) => (
+                        <option key={classroom.id} value={classroom.id}>
+                          {classroom.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
                       Title

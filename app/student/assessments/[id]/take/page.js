@@ -81,6 +81,66 @@ export default function TakeAssessmentPage() {
     return false;
   };
 
+  const handleSubmit = async (forced = false) => {
+    if (
+      !forced &&
+      !confirm("Are you sure you want to submit your assessment?")
+    ) {
+      return;
+    }
+
+    const currentState = stateRef.current;
+
+    setSubmitting(true);
+    try {
+      const finalTimeSpent = {
+        ...currentState.timeSpentPerQuestion,
+        [currentState.assessment?.questions[currentState.currentQuestionIndex]
+          ?.id]:
+          (currentState.timeSpentPerQuestion[
+            currentState.assessment?.questions[
+              currentState.currentQuestionIndex
+            ]?.id
+          ] || 0) +
+          Math.round((Date.now() - currentState.lastQuestionChangeTime) / 1000),
+      };
+
+      const result = await submitAssessment(currentState.submissionId, {
+        assessmentId: id,
+        studentId: user.uid,
+        answers: Object.entries(currentState.answers).map(
+          ([questionId, answer]) => ({
+            questionId: Number(questionId),
+            selectedAnswer: answer,
+            timeSpent: finalTimeSpent[questionId] || 0,
+          })
+        ),
+        submittedAt: new Date(),
+        totalTimeSpent: Object.values(finalTimeSpent).reduce(
+          (a, b) => a + b,
+          0
+        ),
+        teacherId: currentState.assessment?.createdBy,
+        questions: currentState.assessment?.questions,
+        forcedSubmission: forced,
+        tabViolations: currentState.tabViolations,
+      });
+
+      toast.success(
+        forced
+          ? "Assessment submitted automatically due to tab switching violations"
+          : "Assessment submitted successfully"
+      );
+
+      router.push(result?.redirectUrl || "/student/dashboard");
+    } catch (error) {
+      console.error("Error submitting assessment:", error);
+      toast.error("Failed to submit assessment. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Move handleSubmit to useEffect
   useEffect(() => {
     let autoSaveTimer;
@@ -97,67 +157,6 @@ export default function TakeAssessmentPage() {
       hidden = "webkitHidden";
       visibilityChange = "webkitvisibilitychange";
     }
-
-    const handleSubmit = async (forced = false) => {
-      if (
-        !forced &&
-        !confirm("Are you sure you want to submit your assessment?")
-      ) {
-        return;
-      }
-
-      const currentState = stateRef.current;
-
-      setSubmitting(true);
-      try {
-        const finalTimeSpent = {
-          ...currentState.timeSpentPerQuestion,
-          [currentState.assessment?.questions[currentState.currentQuestionIndex]
-            ?.id]:
-            (currentState.timeSpentPerQuestion[
-              currentState.assessment?.questions[
-                currentState.currentQuestionIndex
-              ]?.id
-            ] || 0) +
-            Math.round(
-              (Date.now() - currentState.lastQuestionChangeTime) / 1000
-            ),
-        };
-
-        const result = await submitAssessment(currentState.submissionId, {
-          assessmentId: id,
-          studentId: user.uid,
-          answers: Object.entries(currentState.answers).map(
-            ([questionId, answer]) => ({
-              questionId: Number(questionId),
-              selectedAnswer: answer,
-              timeSpent: finalTimeSpent[questionId] || 0,
-            })
-          ),
-          submittedAt: new Date(),
-          totalTimeSpent: Object.values(finalTimeSpent).reduce(
-            (a, b) => a + b,
-            0
-          ),
-          questions: currentState.assessment?.questions,
-          forcedSubmission: forced,
-          tabViolations: currentState.tabViolations,
-        });
-
-        toast.success(
-          forced
-            ? "Assessment submitted automatically due to tab switching violations"
-            : "Assessment submitted successfully"
-        );
-
-        router.push(result?.redirectUrl || "/student/dashboard");
-      } catch (error) {
-        console.error("Error submitting assessment:", error);
-        toast.error("Failed to submit assessment. Please try again.");
-      } finally {
-        setSubmitting(false);
-      }
-    };
 
     const handleVisibilityChange = () => {
       if (document[hidden]) {

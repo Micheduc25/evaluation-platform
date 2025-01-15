@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendEmailVerification,
+} from "firebase/auth";
 import { auth } from "@/firebase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -13,8 +17,8 @@ export default function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState("student");
   const [error, setError] = useState("");
+  const [verificationSent, setVerificationSent] = useState(false);
   const router = useRouter();
   const dispatch = useDispatch();
 
@@ -27,17 +31,58 @@ export default function SignupForm() {
         password
       );
       await updateProfile(userCredential.user, { displayName: name });
+      await sendEmailVerification(userCredential.user);
 
       // Create user document with role
-      const userData = await createUserDocument(userCredential.user, { role });
-      dispatch(setUser(userData));
+      const userData = await createUserDocument(userCredential.user, {
+        role: "student",
+      });
 
-      // Redirect based on role
-      router.push(role === "student" ? "/dashboard" : `/${role}`);
+      dispatch(setUser(userData));
+      setVerificationSent(true);
     } catch (error) {
       setError(error.message);
     }
   };
+
+  const handleResendVerification = async () => {
+    try {
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        setError("Verification email resent!");
+      }
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  if (verificationSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-200">
+        <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md text-gray-500">
+          <h2 className="text-3xl font-bold text-center">Verify your email</h2>
+          <p className="text-center">
+            Please check your email ({email}) for a verification link.
+          </p>
+          <button
+            onClick={handleResendVerification}
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Resend verification email
+          </button>
+          <p className="text-center mt-4">
+            Already verified?{" "}
+            <Link
+              href="/auth/login"
+              className="text-blue-600 hover:text-blue-800"
+            >
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-200">
@@ -70,17 +115,6 @@ export default function SignupForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            {/* Add role selector dropdown */}
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md"
-              required
-            >
-              <option value="student">Student</option>
-              <option value="teacher">Teacher</option>
-              <option value="admin">Administrator</option>
-            </select>
           </div>
           <button
             type="submit"

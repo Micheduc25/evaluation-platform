@@ -8,14 +8,19 @@ import {
   getStudentRecentResults,
   getAvailableAssessments,
   getStudentPendingResults,
+  getStudentClassrooms,
 } from "@/firebase/utils";
-import AssessmentCard from "./AssessmentCard";
+
 import {
   BookOpenIcon,
   ClockIcon,
   ChartBarIcon,
   CheckCircleIcon,
+  AcademicCapIcon,
+  ArrowRightIcon,
 } from "@heroicons/react/24/outline";
+
+import AssessmentList from "./AssessmentList";
 
 export default function DashboardPage() {
   const { user, loading } = useSelector((state) => state.auth);
@@ -27,26 +32,30 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
+  const [classrooms, setClassrooms] = useState([]);
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       if (!user) return;
 
       try {
         setIsLoading(true);
-        const [stats, available, upcoming, results, pending] =
+        const [newstats, available, upcoming, results, pending, newClassrooms] =
           await Promise.all([
             getStudentStats(user.uid),
             getAvailableAssessments(user.uid),
             getStudentUpcomingExams(user.uid),
             getStudentRecentResults(user.uid),
             getStudentPendingResults(user.uid),
+            getStudentClassrooms(user.uid),
           ]);
 
-        setStats(stats);
+        setStats(newstats);
         setAvailableAssessments(available);
         setUpcomingExams(upcoming);
         setRecentResults(results);
         setPendingResults(pending);
+        setClassrooms(newClassrooms);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         toast.error("Failed to load dashboard data");
@@ -58,8 +67,13 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, [user]);
 
-  const handleStartAssessment = (assessmentId) => {
-    router.push(`/student/assessments/${assessmentId}/take`);
+  const handleStartAssessment = async (assessmentId) => {
+    try {
+      router.push(`/student/assessments/${assessmentId}/take`);
+    } catch (error) {
+      console.error("Error starting assessment:", error);
+      toast.error("Failed to start assessment");
+    }
   };
 
   if (loading || isLoading) {
@@ -128,31 +142,38 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
+
+        {/* Add Classrooms Card */}
+        <div
+          onClick={() => router.push("/student/classrooms")}
+          className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm cursor-pointer hover:shadow-md transition-shadow duration-200 flex items-center justify-between group"
+        >
+          <div className="flex items-center">
+            <AcademicCapIcon className="h-8 w-8 text-blue-600 mr-3" />
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                My Classrooms
+              </p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {classrooms?.length || 0}
+              </p>
+            </div>
+          </div>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <ArrowRightIcon className="h-5 w-5 text-blue-600" />
+          </div>
+        </div>
       </div>
 
-      {/* Available Assessments Section */}
-      <div className="mt-8 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Available Assessments</h2>
-        {availableAssessments.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
-            {availableAssessments.map((assessment) => (
-              <AssessmentCard
-                key={assessment.id}
-                assessment={assessment}
-                onStart={handleStartAssessment}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8 bg-white rounded-lg">
-            <p className="text-gray-500">
-              No assessments available at the moment.
-            </p>
-          </div>
-        )}
+      {/* Assessment List Section - Replace the old available assessments section */}
+      <div className="mt-8">
+        <AssessmentList
+          assessments={availableAssessments}
+          onStartAssessment={handleStartAssessment}
+        />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 gap-6 mt-8">
         {/* Upcoming Exams */}
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-xl font-semibold mb-4">Upcoming Exams</h2>

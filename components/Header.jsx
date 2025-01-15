@@ -19,12 +19,13 @@ const publicNavigation = [
 const privateNavigation = {
   student: [
     { name: 'Dashboard', href: '/student/dashboard' },
-    { name: 'My Evaluations', href: '/student/evaluation' },
+    // { name: 'My Evaluations', href: '/student/evaluation' },
+    { name: 'My Classes', href: '/student/classrooms' },
   ],
   teacher: [
     { name: 'Dashboard', href: '/teacher/dashboard' },
-    { name: 'Create Exam', href: '/teacher/create-exam' },
-    { name: 'My Classes', href: '/teacher/classes' },
+    // { name: 'Create Exam', href: '/teacher/create-exam' },
+    { name: 'My Classes', href: '/teacher/classrooms' },
   ],
   admin: [
     { name: 'Dashboard', href: '/admin/dashboard' },
