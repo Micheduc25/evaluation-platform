@@ -28,7 +28,7 @@ export default function RouteGuard({ children }) {
 
     if (loading) return;
 
-    if (route.protected && (!user?.role || !user?.emailVerified)) {
+    if (route.protected && !user?.role) {
       console.log("Redirecting to login");
       router.replace("/auth/login");
       return;

@@ -1,0 +1,33 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="90" fill="#2563EB" />
+  
+  <!-- Checkmark/pencil abstract shape -->
+  <path
+    d="M60 105 L85 130 L140 75"
+    stroke="white"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  
+  <!-- Document abstract shape -->
+  <path
+    d="M70 50 L130 50 L130 150 L70 150 Z"
+    stroke="white"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  
+  <!-- Lines representing text -->
+  <path
+    d="M85 80 L115 80 M85 100 L115 100 M85 120 L115 120"
+    stroke="white"
+    stroke-width="8"
+    stroke-linecap="round"
+    opacity="0.5"
+  />
+</svg>

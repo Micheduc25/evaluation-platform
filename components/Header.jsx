@@ -64,7 +64,8 @@ export default function Header() {
               {/* Left side - Logo and Navigation */}
               <div className="flex">
                 <Link href="/" className="flex flex-shrink-0 items-center">
-                  <span className="text-xl font-bold text-blue-600">EvalPlatform</span>
+                  <img src="/logo.svg" alt="EvalMaster Logo" className="h-8 w-8 mr-2" />
+                  <span className="text-xl font-bold text-blue-600">EvalMaster</span>
                 </Link>
                 <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                   {currentNavigation.map((item) => (
