@@ -17,6 +17,8 @@ import {
   FlagIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/24/outline";
+import DOMPurify from "isomorphic-dompurify";
+import RichTextEditor from "@/components/RichTextEditor";
 
 export default function TakeAssessmentPage() {
   const { id } = useParams();
@@ -192,9 +194,9 @@ export default function TakeAssessmentPage() {
     };
 
     // Set up event listeners
-    document.addEventListener(visibilityChange, handleVisibilityChange);
-    window.addEventListener("blur", handleVisibilityChange);
-    window.addEventListener("beforeunload", handleBeforeUnload);
+    // document.addEventListener(visibilityChange, handleVisibilityChange);
+    // window.addEventListener("blur", handleVisibilityChange);
+    // window.addEventListener("beforeunload", handleBeforeUnload);
 
     document.addEventListener("copy", preventCopyPaste);
     document.addEventListener("paste", preventCopyPaste);
@@ -423,10 +425,20 @@ export default function TakeAssessmentPage() {
   );
 
   const renderQuestion = (question) => {
-    switch (question.type) {
-      case "multiple_choice":
-        return (
-          <div className="space-y-3" onCopy={(e) => e.preventDefault()}>
+    const createMarkup = (content) => {
+      return { __html: DOMPurify.sanitize(content) };
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Replace the parse function with dangerouslySetInnerHTML */}
+        <div
+          className="prose prose-lg max-w-none mb-6"
+          dangerouslySetInnerHTML={createMarkup(question.text)}
+        />
+
+        {question.type === "multiple_choice" ? (
+          <div className="space-y-3 mt-4">
             {question.options.map((option, idx) => (
               <label
                 key={idx}
@@ -446,44 +458,39 @@ export default function TakeAssessmentPage() {
                   }
                   className="h-4 w-4 text-blue-600"
                 />
-                <span
-                  className="ml-3 select-none"
-                  onCopy={(e) => e.preventDefault()}
-                >
-                  {option}
-                </span>
+
+                <div
+                  className="ml-3 select-none prose"
+                  dangerouslySetInnerHTML={createMarkup(option)}
+                />
               </label>
             ))}
           </div>
-        );
-
-      case "open_answer":
-        return (
+        ) : (
           <div className="space-y-2">
-            <textarea
-              value={answers[question.id]?.value || ""}
-              onChange={(e) =>
-                handleAnswerInput(question.id, e.target.value, "open_answer")
+            <RichTextEditor
+              key={question.id} // Add this key prop
+              content={answers[question.id]?.value || ""}
+              onChange={(value) =>
+                handleAnswerInput(question.id, value, "open_answer")
               }
-              onPaste={(e) => e.preventDefault()}
-              onCopy={(e) => e.preventDefault()}
-              placeholder="Type your answer here..."
-              className="w-full p-4 border-2 rounded-lg min-h-[200px] focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              rows={8}
-              spellCheck={false}
+              error={false}
+              preventCopy={true}
             />
             <div className="flex justify-between text-sm text-gray-500 select-none">
               <span>
-                Characters: {(answers[question.id]?.value || "").length}
+                Characters:{" "}
+                {
+                  (answers[question.id]?.value || "").replace(/<[^>]*>/g, "")
+                    .length
+                }
               </span>
               <span>Max points: {question.maxPoints || 10}</span>
             </div>
           </div>
-        );
-
-      default:
-        return <p className="select-none">Unsupported question type</p>;
-    }
+        )}
+      </div>
+    );
   };
 
   return (
@@ -600,12 +607,6 @@ export default function TakeAssessmentPage() {
                     </button>
                   </div>
 
-                  <div className="prose max-w-none mb-6">
-                    <p className="text-lg">
-                      {assessment.questions[currentQuestionIndex].text}
-                    </p>
-                  </div>
-
                   {renderQuestion(assessment.questions[currentQuestionIndex])}
 
                   <div className="flex justify-between mt-8">
@@ -689,7 +690,6 @@ export default function TakeAssessmentPage() {
 // Helper function to update submission progress
 async function updateSubmissionProgress(submissionId, answers) {
   // Implement the API call to update submission progress
-  // This could be a new function in firebase/utils.js
-  // For now, just simulate the API call
+  // This could be a new function in firebase/utils.js  // For now, just simulate the API call
   return new Promise((resolve) => setTimeout(resolve, 500));
 }

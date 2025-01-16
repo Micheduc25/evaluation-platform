@@ -12,9 +12,15 @@
     "@headlessui/react": "^2.2.0",
     "@heroicons/react": "^2.2.0",
     "@reduxjs/toolkit": "^1.9.5",
+    "@tiptap/extension-bullet-list": "^2.11.2",
+    "@tiptap/extension-list-item": "^2.11.2",
+    "@tiptap/extension-ordered-list": "^2.11.2",
+    "@tiptap/react": "^2.11.2",
+    "@tiptap/starter-kit": "^2.11.2",
     "date-fns": "^4.1.0",
     "firebase": "^11.1.0",
     "firebase-admin": "^13.0.2",
+    "isomorphic-dompurify": "^2.20.0",
     "next": "14.1.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -22,6 +28,7 @@
     "react-redux": "^8.1.1"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.16",
     "autoprefixer": "^10.0.1",
     "postcss": "^8",
     "tailwindcss": "^3.4.1"

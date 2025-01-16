@@ -6,6 +6,7 @@ import { db } from "@/firebase/client";
 import { gradeOpenAnswerQuestion } from "@/firebase/utils";
 import { toast } from "react-hot-toast";
 import { PencilIcon, CheckIcon } from "@heroicons/react/24/outline";
+import DomPurify from "dompurify";
 
 export default function GradingInterface() {
   const router = useRouter();
@@ -205,7 +206,7 @@ export default function GradingInterface() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto p-6 ">
       <div className="bg-white shadow rounded-lg p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Grade Submission</h2>
@@ -241,21 +242,38 @@ export default function GradingInterface() {
             >
               <div className="mb-4">
                 <h3 className="font-medium">Question {index + 1}</h3>
-                <p className="text-gray-600">{question.text}</p>
+                <p
+                  className="text-gray-600 prose prose-lg"
+                  dangerouslySetInnerHTML={{
+                    __html: DomPurify.sanitize(question.text),
+                  }}
+                ></p>
               </div>
 
               <div className="mb-4">
                 <h4 className="font-medium">Student's Answer:</h4>
-                <p className="whitespace-pre-wrap bg-gray-50 p-3 rounded">
-                  {answer.selectedAnswer?.value ||
-                    answer.selectedAnswer ||
-                    "No answer provided"}
-                </p>
+                <p
+                  className="whitespace-pre-wrap bg-gray-50 p-3 rounded prose prose-lg"
+                  dangerouslySetInnerHTML={{
+                    __html: DomPurify.sanitize(
+                      `${
+                        answer.selectedAnswer?.value ||
+                        answer.selectedAnswer ||
+                        "No answer provided"
+                      }`
+                    ),
+                  }}
+                ></p>
               </div>
 
               <div className="mb-4">
                 <h4 className="font-medium">Sample Answer:</h4>
-                <p className="text-gray-600">{question.correctAnswer}</p>
+                <p
+                  className="text-gray-600 prose prose-lg"
+                  dangerouslySetInnerHTML={{
+                    __html: DomPurify.sanitize(question.correctAnswer),
+                  }}
+                ></p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -175,7 +175,6 @@ export const submitAssessment = async (submissionId, submissionData) => {
       console.log("questions:", submissionData.answers);
 
       for (const answer of submissionData.answers) {
-        console.log("Answer questionId:", answer);
         const question = assessmentData.questions.find(
           (q) => q.id === answer.questionId
         );
@@ -734,6 +733,8 @@ export const getAssessmentResults = async (submissionId) => {
         completedAt: submissionData.completedAt,
         totalScore: submissionData.score,
         maxScore: assessmentData.totalPoints,
+        forcedSubmission: submissionData.forcedSubmission || false,
+        tabViolations: submissionData.tabViolations || 0,
         percentage: Math.round(
           (submissionData.score / assessmentData.totalPoints) * 100
         ),

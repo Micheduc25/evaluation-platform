@@ -258,7 +258,10 @@ export default function AssessmentResultsPage() {
                       Question {index + 1}{" "}
                       {renderQuestionScore(question, answer)}
                     </h3>
-                    <p className="mt-2 text-gray-700">{question.text}</p>
+                    <p
+                      className="mt-2 text-gray-700 prose prose-lg"
+                      dangerouslySetInnerHTML={{ __html: question.text }}
+                    ></p>
                     {renderQuestionContent(question, answer)}
                   </div>
                   {icon}

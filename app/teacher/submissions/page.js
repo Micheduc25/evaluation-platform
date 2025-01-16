@@ -239,15 +239,15 @@ export default function AllSubmissionsPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
                           onClick={() =>
-                            router.push(
-                              `/teacher/assessments/${submission.assessmentId}/submissions/${submission.id}/grade`
-                            )
+                            submission.status !== "pending_review"
+                              ? router.push(
+                                  `/teacher/submissions/${submission.id}`
+                                )
+                              : router.push(
+                                  `/teacher/assessments/${submission.assessmentId}/submissions/${submission.id}/grade`
+                                )
                           }
-                          className={`text-blue-600 hover:text-blue-900 ${
-                            submission.status !== "pending_review" &&
-                            "opacity-50 cursor-not-allowed"
-                          }`}
-                          disabled={submission.status !== "pending_review"}
+                          className={`text-blue-600 hover:text-blue-900 `}
                         >
                           {submission.status === "pending_review"
                             ? "Grade"

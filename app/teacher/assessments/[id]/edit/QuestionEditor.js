@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { TrashIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { RadioGroup, Radio, Label } from "@headlessui/react";
+import RichTextEditor from "@/components/RichTextEditor";
 
 export default function QuestionEditor({
   question,
@@ -92,38 +93,34 @@ export default function QuestionEditor({
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-sm mb-4 border border-gray-200">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex-1 mr-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="font-medium text-gray-700">
-              Question {questionNumber}
-            </span>
-          </div>
-          <textarea
-            value={localQuestion.text}
-            onChange={handleQuestionChange}
-            className={`w-full p-3 border rounded-md transition-colors ${
-              error?.includes("text")
-                ? "border-red-500 bg-red-50"
-                : "border-gray-300"
-            }`}
-            placeholder="Enter your question here..."
-            rows="2"
-          />
-          {error?.includes("text") && (
-            <p className="mt-1 text-sm text-red-500">
-              Question text is required
-            </p>
-          )}
+      <div className="flex-1 mr-4 mb-2">
+        <div className="flex items-center gap-2 mb-2 justify-between">
+          <span className="font-medium text-gray-700">
+            Question {questionNumber}
+          </span>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-md hover:bg-red-50"
+            title="Delete question"
+          >
+            <TrashIcon className="h-5 w-5" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-md hover:bg-red-50"
-          title="Delete question"
-        >
-          <TrashIcon className="h-5 w-5" />
-        </button>
+        <RichTextEditor
+          content={localQuestion.text}
+          onChange={(value) => {
+            const newQuestion = { ...localQuestion, text: value };
+            setLocalQuestion(newQuestion);
+            onChange(newQuestion);
+          }}
+          error={error?.includes("text")}
+        />
+        {error?.includes("text") && (
+          <p className="mt-1 text-sm text-red-500">Question text is required</p>
+        )}
+      </div>
+      <div className="flex justify-between items-start mb-4">
         <RadioGroup
           value={questionType}
           onChange={handleQuestionTypeChange}
@@ -169,7 +166,7 @@ export default function QuestionEditor({
               type="number"
               value={localQuestion.points || 1}
               onChange={(e) => handlePointsChange(e.target.value)}
-              className="mt-1 w-24 p-2 border rounded-md"
+              className="mt-1 w-32 p-3 border rounded-md shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               min="1"
             />
           </div>
@@ -186,11 +183,13 @@ export default function QuestionEditor({
                 type="text"
                 value={option}
                 onChange={(e) => handleOptionChange(index, e.target.value)}
-                className={`flex-1 p-2 border rounded-md transition-colors ${
-                  error?.includes("options")
-                    ? "border-red-500 bg-red-50"
-                    : "border-gray-300"
-                }`}
+                className={`flex-1 p-3 border rounded-md transition-colors shadow-sm
+                  ${
+                    error?.includes("options")
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  }
+                `}
                 placeholder={`Option ${index + 1}`}
               />
               {localQuestion.options.length > 2 && (
@@ -211,15 +210,14 @@ export default function QuestionEditor({
           <label className="block text-sm font-medium text-gray-700">
             Sample Answer (for grading reference)
           </label>
-          <textarea
-            value={localQuestion.correctAnswer || ""}
-            onChange={(e) =>
-              onChange({ ...localQuestion, correctAnswer: e.target.value })
-            }
-            className="w-full p-2 border rounded-md"
-            rows="3"
-            placeholder="Enter a sample answer"
+          <RichTextEditor
+            content={localQuestion.correctAnswer}
+            onChange={(value) => {
+              onChange({ ...localQuestion, correctAnswer: value });
+            }}
+            error={error?.includes("text")}
           />
+
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Max Points
