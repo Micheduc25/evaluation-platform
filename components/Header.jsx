@@ -179,7 +179,7 @@ export default function Header() {
                   {item.name}
                 </DisclosureButton>
               ))}
-              {!user && (
+              {!user ? (
                 <div className="border-t border-gray-200 pt-4">
                   <DisclosureButton
                     as={Link}
@@ -194,6 +194,23 @@ export default function Header() {
                     className="block px-4 py-2 text-base font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800"
                   >
                     Sign up
+                  </DisclosureButton>
+                </div>
+              ) : (
+                <div className="border-t border-gray-200 pt-4">
+                  <DisclosureButton
+                    as={Link}
+                    href="/profile"
+                    className="block px-4 py-2 text-base font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                  >
+                    Profile
+                  </DisclosureButton>
+                  <DisclosureButton
+                    as="button"
+                    onClick={handleLogout}
+                    className="block w-full px-4 py-2 text-left text-base font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                  >
+                    Sign out
                   </DisclosureButton>
                 </div>
               )}
