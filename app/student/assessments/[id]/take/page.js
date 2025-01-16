@@ -194,9 +194,9 @@ export default function TakeAssessmentPage() {
     };
 
     // Set up event listeners
-    // document.addEventListener(visibilityChange, handleVisibilityChange);
-    // window.addEventListener("blur", handleVisibilityChange);
-    // window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener(visibilityChange, handleVisibilityChange);
+    window.addEventListener("blur", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     document.addEventListener("copy", preventCopyPaste);
     document.addEventListener("paste", preventCopyPaste);
