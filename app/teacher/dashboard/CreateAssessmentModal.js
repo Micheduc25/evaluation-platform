@@ -73,17 +73,23 @@ export default function CreateAssessmentModal({
       }
 
       if (question.type === "multiple_choice") {
-        if (!question.points || question.points < 1) {
+        const points = Number(question.points);
+        if (!points || points < 1) {
           newErrors[`question_${index}_points`] =
             "Points must be greater than 0";
         }
-        totalAssignedPoints += question.points || 1;
+        totalAssignedPoints += points || 0;
 
         if (question.options.some((opt) => !opt.trim())) {
           newErrors[`question_${index}_options`] = "All options must be filled";
         }
       } else if (question.type === "open_answer") {
-        totalAssignedPoints += question.maxPoints || 1;
+        const maxPoints = Number(question.maxPoints);
+        if (!maxPoints || maxPoints < 1) {
+          newErrors[`question_${index}_points`] =
+            "Maximum points must be greater than 0";
+        }
+        totalAssignedPoints += maxPoints || 0;
       }
     });
 
@@ -112,23 +118,18 @@ export default function CreateAssessmentModal({
 
     setLoading(true);
     try {
-      const pointsPerQuestion = Math.floor(
-        formData.totalPoints / formData.questions.length
-      );
-
-      // Ensure endDate is a proper Date object
-      const endDate = formData.endDate ? new Date(formData.endDate) : null;
-
+      // Remove the automatic points calculation and use the points set for each question
       const assessmentData = {
         ...formData,
         questions: formData.questions.map((q) => ({
           ...q,
-          points: pointsPerQuestion,
+          // Keep the original points/maxPoints based on question type
+          points: q.type === "multiple_choice" ? Number(q.points) : undefined,
+          maxPoints: q.type === "open_answer" ? Number(q.maxPoints) : undefined,
         })),
-        endDate, // This will be a proper Date object
+        endDate: new Date(formData.endDate),
         createdBy: user.uid,
         status: "active",
-
         submissionCount: 0,
       };
 
@@ -165,7 +166,8 @@ export default function CreateAssessmentModal({
           id: Date.now(),
           text: "",
           type: "multiple_choice",
-          points: 10,
+          points: 10, // for multiple choice
+          maxPoints: 10, // for open answer
           options: ["", ""],
           correctAnswer: "",
         },

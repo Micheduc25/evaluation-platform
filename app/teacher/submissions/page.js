@@ -7,8 +7,9 @@ import {
   ChevronDownIcon,
   AdjustmentsVerticalIcon,
   MagnifyingGlassIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
-import { getAllSubmissions } from "@/firebase/utils";
+import { getAllSubmissions, deleteSubmission } from "@/firebase/utils";
 
 export default function AllSubmissionsPage() {
   const user = useSelector((state) => state.auth.user);
@@ -50,6 +51,19 @@ export default function AllSubmissionsPage() {
           ? "desc"
           : "asc",
     });
+  };
+
+  const handleDelete = async (submissionId) => {
+    if (window.confirm("Are you sure you want to delete this submission?")) {
+      try {
+        await deleteSubmission(submissionId);
+        // Update the submissions list after deletion
+        setSubmissions(submissions.filter((sub) => sub.id !== submissionId));
+      } catch (error) {
+        console.error("Error deleting submission:", error);
+        // Optionally show an error message to the user
+      }
+    }
   };
 
   const filteredAndSortedSubmissions = submissions
@@ -179,11 +193,13 @@ export default function AllSubmissionsPage() {
                     { key: "status", label: "Status" },
                     { key: "score", label: "Score" },
                     { key: "submittedAt", label: "Submitted" },
-                    { label: "Actions" },
+                    { label: "Actions", className: "text-center" },
                   ].map((column) => (
                     <th
                       key={column.key || "actions"}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer ${
+                        column.className || ""
+                      }`}
                       onClick={() => column.key && handleSort(column.key)}
                     >
                       <div className="flex items-center space-x-1">
@@ -237,22 +253,32 @@ export default function AllSubmissionsPage() {
                           : "N/A"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() =>
-                            submission.status !== "pending_review"
-                              ? router.push(
-                                  `/teacher/submissions/${submission.id}`
-                                )
-                              : router.push(
-                                  `/teacher/assessments/${submission.assessmentId}/submissions/${submission.id}/grade`
-                                )
-                          }
-                          className={`text-blue-600 hover:text-blue-900 `}
-                        >
-                          {submission.status === "pending_review"
-                            ? "Grade"
-                            : "View"}
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleDelete(submission.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 rounded-full 
+                                     hover:bg-red-50 transition-colors"
+                            title="Delete submission"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              submission.status !== "pending_review"
+                                ? router.push(
+                                    `/teacher/submissions/${submission.id}`
+                                  )
+                                : router.push(
+                                    `/teacher/assessments/${submission.assessmentId}/submissions/${submission.id}/grade`
+                                  )
+                            }
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            {submission.status === "pending_review"
+                              ? "Grade"
+                              : "View"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

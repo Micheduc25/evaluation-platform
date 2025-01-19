@@ -37,7 +37,7 @@ export default function AssessmentList({ assessments, onStartAssessment }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Available Assessments</h2>
         <select

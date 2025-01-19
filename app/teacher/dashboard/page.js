@@ -5,6 +5,7 @@ import {
   getUserAssessments,
   getTeacherStats,
   getPendingSubmissions,
+  deleteSubmission,
 } from "@/firebase/utils";
 import AssessmentList from "./AssessmentList";
 import DashboardStats from "./DashboardStats";
@@ -21,6 +22,28 @@ export default function TeacherDashboard() {
   const [pendingSubmissions, setPendingSubmissions] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const handleDeleteSubmission = async (submissionId) => {
+    try {
+      await deleteSubmission(submissionId);
+      // Update the pending submissions list after deletion
+      const updatedSubmissions = pendingSubmissions.filter(
+        (sub) => sub.id !== submissionId
+      );
+      setPendingSubmissions(updatedSubmissions);
+
+      // Update stats
+      if (stats) {
+        setStats({
+          ...stats,
+          pendingReviews: Math.max(0, stats.pendingReviews - 1),
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting submission:", error);
+      // Optionally show an error message to the user
+    }
+  };
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -95,6 +118,7 @@ export default function TeacherDashboard() {
               <PendingSubmissions
                 submissions={pendingSubmissions}
                 teacherId={user.uid}
+                onDelete={handleDeleteSubmission}
               />
             </div>
           </div>

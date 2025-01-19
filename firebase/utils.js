@@ -79,6 +79,7 @@ export const updateUserProfile = async (uid, userData) => {
 
 // Assessment helpers
 export const createAssessment = async (assessmentData) => {
+  console.log(" creation assessmentData:", assessmentData);
   try {
     return await runTransaction(db, async (transaction) => {
       const docRef = doc(collection(db, "assessments"));
@@ -386,6 +387,7 @@ export const getAvailableAssessments = async (studentId) => {
         collection(db, "submissions"),
         where("assessmentId", "==", doc.id),
         where("studentId", "==", studentId),
+        where("status", "!=", "in_progress"),
         limit(1)
       );
       const submissionSnapshot = await getDocs(submissionQuery);
@@ -664,6 +666,32 @@ export const getAllSubmissions = async (teacherId) => {
     return submissions;
   } catch (error) {
     console.error("Error getting all submissions:", error);
+    throw error;
+  }
+};
+
+export const getSubmission = async (assessmentId, studentId) => {
+  try {
+    if (!assessmentId || !studentId) {
+      throw new Error("Assessment ID and student ID are required");
+    }
+
+    const submissionQuery = query(
+      collection(db, "submissions"),
+      where("assessmentId", "==", assessmentId),
+      where("studentId", "==", studentId),
+      limit(1)
+    );
+    const submissionSnap = await getDocs(submissionQuery);
+
+    if (submissionSnap.empty) {
+      return null;
+    }
+
+    const submission = submissionSnap.docs[0].data();
+    return { id: submissionSnap.docs[0].id, ...submission };
+  } catch (error) {
+    console.error("Error getting submission:", error);
     throw error;
   }
 };
@@ -1043,6 +1071,92 @@ export const getClassroomStudents = async (classroomId) => {
     return studentsData;
   } catch (error) {
     console.error("Error getting classroom students:", error);
+    throw error;
+  }
+};
+
+export const saveAssessmentProgress = async (submissionId, progressData) => {
+  try {
+    const submissionRef = doc(db, "submissions", submissionId);
+    const submissionDoc = await getDoc(submissionRef);
+
+    if (
+      !submissionDoc.exists() ||
+      submissionDoc.data().status !== "in_progress"
+    ) {
+      return false;
+    }
+
+    await updateDoc(submissionRef, {
+      answers: progressData.answers,
+      currentQuestionIndex: progressData.currentQuestionIndex,
+      timeSpentPerQuestion: progressData.timeSpentPerQuestion,
+      violations: progressData.violations,
+      lastSaved: new Date(),
+      status: "in_progress",
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Error saving assessment progress:", error);
+    throw error;
+  }
+};
+
+export const getAssessmentProgress = async (submissionId) => {
+  try {
+    const submissionRef = doc(db, "submissions", submissionId);
+    const submissionDoc = await getDoc(submissionRef);
+
+    if (
+      !submissionDoc.exists() ||
+      submissionDoc.data().status !== "in_progress"
+    ) {
+      return null;
+    }
+
+    const data = submissionDoc.data();
+    return {
+      answers: data.answers || {},
+      currentQuestionIndex: data.currentQuestionIndex || 0,
+      timeSpentPerQuestion: data.timeSpentPerQuestion || {},
+      violations: data.violations,
+      lastSaved: data.lastSaved?.toDate() || new Date(),
+    };
+  } catch (error) {
+    console.error("Error retrieving assessment progress:", error);
+    throw error;
+  }
+};
+
+// New functions to handle file uploads
+
+export const uploadAssessmentImage = async (file, assessmentId) => {
+  try {
+    const result = await uploadFile(file, `assessments/${assessmentId}/images`);
+    return result;
+  } catch (error) {
+    console.error("Error uploading assessment image:", error);
+    throw error;
+  }
+};
+
+export const deleteAssessmentImage = async (imagePath) => {
+  try {
+    await deleteFile(imagePath);
+  } catch (error) {
+    console.error("Error deleting assessment image:", error);
+    throw error;
+  }
+};
+
+export const deleteSubmission = async (submissionId) => {
+  try {
+    const submissionRef = doc(db, "submissions", submissionId);
+    await deleteDoc(submissionRef);
+    return true;
+  } catch (error) {
+    console.error("Error deleting submission:", error);
     throw error;
   }
 };

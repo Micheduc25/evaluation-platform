@@ -7,6 +7,7 @@ import { gradeOpenAnswerQuestion } from "@/firebase/utils";
 import { toast } from "react-hot-toast";
 import { PencilIcon, CheckIcon } from "@heroicons/react/24/outline";
 import DomPurify from "dompurify";
+import Image from "next/image";
 
 export default function GradingInterface() {
   const router = useRouter();
@@ -197,6 +198,76 @@ export default function GradingInterface() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  const renderAnswer = (answer, question) => {
+    if (question.type === "multiple_choice") {
+      return (
+        <div className="mb-4">
+          {question.options.map((option, idx) => (
+            <div
+              key={idx}
+              className={`p-3 rounded-lg border mb-2 ${
+                answer.selectedAnswer?.value === idx
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200"
+              }`}
+            >
+              <p
+                className="prose"
+                dangerouslySetInnerHTML={{
+                  __html: DomPurify.sanitize(option),
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <div
+          className="whitespace-pre-wrap bg-gray-50 p-3 rounded prose prose-lg mb-4"
+          dangerouslySetInnerHTML={{
+            __html: DomPurify.sanitize(
+              `${answer.selectedAnswer?.value || "No answer provided"}`
+            ),
+          }}
+        />
+
+        {/* Display uploaded images */}
+        {answer.selectedAnswer?.images &&
+          answer.selectedAnswer.images.length > 0 && (
+            <div className="mt-4">
+              <h4 className="font-medium text-gray-700 mb-2">
+                Attached Images:
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {answer.selectedAnswer.images.map((image, idx) => (
+                  <div key={idx} className="relative group">
+                    <a
+                      href={image.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={image.url}
+                        alt={`Student upload ${idx + 1}`}
+                        className="rounded-lg w-full h-48 object-cover hover:opacity-90 transition-opacity"
+                      />
+                    </a>
+                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      Click to view full size
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -252,18 +323,7 @@ export default function GradingInterface() {
 
               <div className="mb-4">
                 <h4 className="font-medium">Student's Answer:</h4>
-                <p
-                  className="whitespace-pre-wrap bg-gray-50 p-3 rounded prose prose-lg"
-                  dangerouslySetInnerHTML={{
-                    __html: DomPurify.sanitize(
-                      `${
-                        answer.selectedAnswer?.value ||
-                        answer.selectedAnswer ||
-                        "No answer provided"
-                      }`
-                    ),
-                  }}
-                ></p>
+                {renderAnswer(answer, question)}
               </div>
 
               <div className="mb-4">

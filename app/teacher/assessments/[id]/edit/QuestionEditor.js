@@ -8,7 +8,7 @@ export default function QuestionEditor({
   onChange,
   onDelete,
   error,
-  questionNumber, // Add this prop
+  questionNumber,
 }) {
   const [localQuestion, setLocalQuestion] = useState(question);
   const [localError, setLocalError] = useState("");

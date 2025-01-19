@@ -7,6 +7,8 @@ import {
   startAssessment,
   submitAssessment,
   handleIncompleteAssessment,
+  saveAssessmentProgress,
+  getAssessmentProgress,
 } from "@/firebase/utils";
 import { setLoading, setError } from "@/store/slices/assessmentSlice";
 import AssessmentTimer from "./AssessmentTimer";
@@ -16,9 +18,13 @@ import {
   ChevronRightIcon,
   FlagIcon,
   ExclamationCircleIcon,
+  XCircleIcon, // Add this import
+  PhotoIcon,
 } from "@heroicons/react/24/outline";
 import DOMPurify from "isomorphic-dompurify";
 import RichTextEditor from "@/components/RichTextEditor";
+import FileUpload from "@/components/FileUpload";
+import { uploadFile } from "@/firebase/storage";
 
 export default function TakeAssessmentPage() {
   const { id } = useParams();
@@ -40,8 +46,80 @@ export default function TakeAssessmentPage() {
   const [lastQuestionChangeTime, setLastQuestionChangeTime] = useState(
     Date.now()
   );
-  const [tabViolations, setTabViolations] = useState(0);
-  const MAX_VIOLATIONS = 2; // Number of warnings before auto-submission
+
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  const [violations, setViolations] = useState({
+    tabSwitch: 0,
+    windowBlur: 0,
+    devTools: 0,
+    fullscreen: 0,
+    windowMove: 0,
+  });
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("");
+
+  const [questionImages, setQuestionImages] = useState({});
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const [isUploadingImage, setIsUploadingImage] = useState(false); // Add new state
+
+  const VIOLATION_LIMITS = {
+    tabSwitch: 3,
+    windowBlur: 3,
+    devTools: 2,
+    fullscreen: 2,
+    windowMove: 2,
+  };
+
+  const isValidSaveState = () => {
+    // Check total violations against thresholds
+    const currentViolations = stateRef.current.violations;
+
+    // Prevent saves if:
+    // 1. Any violation type is at or above its limit
+    // 2. Total violations across all types is too high
+    const hasExceededLimits = Object.entries(currentViolations).some(
+      ([type, count]) => count >= VIOLATION_LIMITS[type]
+    );
+
+    const totalViolations = Object.values(currentViolations).reduce(
+      (sum, count) => sum + count,
+      0
+    );
+
+    // Allow maximum of 70% of total possible violations before blocking saves
+    const maxTotalViolations =
+      Object.values(VIOLATION_LIMITS).reduce((sum, limit) => sum + limit, 0) *
+      0.7;
+
+    return !hasExceededLimits && totalViolations < maxTotalViolations;
+  };
+
+  const handleViolation = (type, message) => {
+    setViolations((prev) => {
+      const newCount = (prev[type] || 0) + 1;
+      const limit = VIOLATION_LIMITS[type];
+
+      // update state ref
+      stateRef.current.violations = {
+        ...prev,
+        [type]: newCount,
+      };
+
+      if (newCount >= limit) {
+        handleSubmit(true);
+        toast.error(
+          `Maximum ${type} violations reached. Assessment submitted.`
+        );
+      } else {
+        setWarningMessage(`Warning: ${message} (${newCount}/${limit})`);
+        setShowWarningModal(true);
+      }
+
+      return { ...prev, [type]: newCount };
+    });
+  };
 
   const initializationRef = useRef(false);
 
@@ -50,7 +128,7 @@ export default function TakeAssessmentPage() {
     assessment: null,
     answers: {},
     submissionId: null,
-    tabViolations: 0,
+    violations: 0,
     timeSpentPerQuestion: {},
     lastQuestionChangeTime: Date.now(),
     currentQuestionIndex: 0,
@@ -62,7 +140,7 @@ export default function TakeAssessmentPage() {
       assessment,
       answers,
       submissionId,
-      tabViolations,
+      violations,
       timeSpentPerQuestion,
       lastQuestionChangeTime,
       currentQuestionIndex,
@@ -71,7 +149,7 @@ export default function TakeAssessmentPage() {
     assessment,
     answers,
     submissionId,
-    tabViolations,
+    violations,
     timeSpentPerQuestion,
     lastQuestionChangeTime,
     currentQuestionIndex,
@@ -125,7 +203,7 @@ export default function TakeAssessmentPage() {
         teacherId: currentState.assessment?.createdBy,
         questions: currentState.assessment?.questions,
         forcedSubmission: forced,
-        tabViolations: currentState.tabViolations,
+        violations: currentState.violations,
       });
 
       toast.success(
@@ -143,7 +221,86 @@ export default function TakeAssessmentPage() {
     }
   };
 
-  // Move handleSubmit to useEffect
+  // Function to handle fullscreen
+  const enterFullScreen = () => {
+    const element = document.documentElement;
+    if (element.requestFullscreen) {
+      element.requestFullscreen();
+    } else if (element.mozRequestFullScreen) {
+      element.mozRequestFullScreen();
+    } else if (element.webkitRequestFullscreen) {
+      element.webkitRequestFullscreen();
+    } else if (element.msRequestFullscreen) {
+      element.msRequestFullscreen();
+    }
+  };
+
+  // Function to detect DevTools
+  const detectDevTools = () => {
+    const threshold = 160;
+    const widthThreshold = window.outerWidth - window.innerWidth > threshold;
+    const heightThreshold = window.outerHeight - window.innerHeight > threshold;
+
+    if (widthThreshold || heightThreshold) {
+      handleViolation("devTools", "Developer tools are not allowed");
+    }
+  };
+
+  // Prevent keyboard shortcuts
+  const preventKeyboardShortcuts = useCallback((e) => {
+    // Prevent common shortcuts
+    if (
+      (e.ctrlKey || e.metaKey) &&
+      (e.key === "c" ||
+        e.key === "v" ||
+        e.key === "p" ||
+        e.key === "s" ||
+        e.key === "u" ||
+        e.key === "i" ||
+        (e.shiftKey && e.key === "i"))
+    ) {
+      e.preventDefault();
+      return false;
+    }
+  }, []);
+
+  const loadSavedProgress = async (submissionId) => {
+    try {
+      const savedProgress = await getAssessmentProgress(submissionId);
+      if (savedProgress) {
+        setAnswers(savedProgress.answers);
+        setCurrentQuestionIndex(savedProgress.currentQuestionIndex);
+        setTimeSpentPerQuestion(savedProgress.timeSpentPerQuestion);
+        setViolations(
+          savedProgress.violations || {
+            tabSwitch: 0,
+            windowBlur: 0,
+            devTools: 0,
+            fullscreen: 0,
+            windowMove: 0,
+          }
+        );
+
+        // Update state ref with loaded data
+        stateRef.current = {
+          ...stateRef.current,
+          answers: savedProgress.answers,
+          currentQuestionIndex: savedProgress.currentQuestionIndex,
+          timeSpentPerQuestion: savedProgress.timeSpentPerQuestion,
+          violations: savedProgress.violations,
+        };
+
+        // toast.success("Restored your previous progress");
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Failed to load saved progress:", error);
+      toast.error("Could not restore your previous progress");
+      return false;
+    }
+  };
+
   useEffect(() => {
     let autoSaveTimer;
     let hidden, visibilityChange;
@@ -161,22 +318,9 @@ export default function TakeAssessmentPage() {
     }
 
     const handleVisibilityChange = () => {
-      if (document[hidden]) {
-        const currentState = stateRef.current;
-        setTabViolations((prev) => {
-          const newCount = prev + 1;
-          if (newCount >= MAX_VIOLATIONS) {
-            toast.error(
-              "Maximum tab switches exceeded. Assessment will be submitted."
-            );
-            handleSubmit(true);
-          } else {
-            toast.error(
-              `Warning: Switching tabs is not allowed. Warning ${newCount}/${MAX_VIOLATIONS}`
-            );
-          }
-          return newCount;
-        });
+      if (document[hidden] && !isUploadingImage) {
+        // Only check if not uploading
+        handleViolation("tabSwitch", "Switching tabs is not allowed");
       }
     };
 
@@ -219,38 +363,22 @@ export default function TakeAssessmentPage() {
         }
 
         const submissionIdNew = await startAssessment(id, user.uid);
-
-        // Initialize answers object with null values for all questions
-        const initialAnswers = {};
-        assessmentData.questions.forEach((q) => {
-          initialAnswers[q.id] = null;
-        });
-
-        // Set all the state at once to avoid multiple re-renders
-        initializationRef.current = true;
         setSubmissionId(submissionIdNew);
         setAssessment(assessmentData);
 
-        setAnswers(initialAnswers);
-        setTimeSpentPerQuestion({});
-        setLastQuestionChangeTime(Date.now());
-        setCurrentQuestionIndex(0);
-        setMarkedQuestions(new Set());
-        setTabViolations(0);
+        // Initialize with empty answers if no saved progress
+        const progressLoaded = await loadSavedProgress(submissionIdNew);
+        if (!progressLoaded) {
+          const initialAnswers = {};
+          assessmentData.questions.forEach((q) => {
+            initialAnswers[q.id] = null;
+          });
+          setAnswers(initialAnswers);
+          setTimeSpentPerQuestion({});
+          setCurrentQuestionIndex(0);
+        }
 
-        // Start auto-save timer
-        autoSaveTimer = setInterval(async () => {
-          if (submissionId && Object.keys(answers).length > 0) {
-            try {
-              setAutoSaveStatus("saving");
-              await updateSubmissionProgress(submissionId, answers);
-              setAutoSaveStatus("saved");
-            } catch (error) {
-              console.error("Auto-save failed:", error);
-              setAutoSaveStatus("error");
-            }
-          }
-        }, 30000);
+        initializationRef.current = true;
       } catch (error) {
         dispatch(setError(error.message));
         toast.error(error.message);
@@ -259,6 +387,50 @@ export default function TakeAssessmentPage() {
         dispatch(setLoading(false));
       }
     };
+
+    // Force fullscreen
+    enterFullScreen();
+
+    // Monitor fullscreen changes
+    const handleFullscreenChange = () => {
+      setIsFullScreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement && !submitting && !isUploadingImage) {
+        handleViolation("fullscreen", "Fullscreen mode is required");
+        enterFullScreen();
+      }
+    };
+
+    // Monitor window size and position
+    let lastTop = window.screenY;
+    let lastLeft = window.screenX;
+
+    const handleWindowMove = () => {
+      if (window.screenY !== lastTop || window.screenX !== lastLeft) {
+        handleViolation("windowMove", "Window movement detected");
+      }
+    };
+
+    // Prevent screen capture
+    const style = document.createElement("style");
+    style.textContent = `
+      html {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+      video::-webkit-media-controls-enclosure,
+      video::-webkit-media-controls {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    // Set up event listeners
+    window.addEventListener("keydown", preventKeyboardShortcuts);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    window.addEventListener("resize", detectDevTools);
+    window.addEventListener("move", handleWindowMove);
 
     // Initialize assessment if user is available
     if (user && !initializationRef.current) {
@@ -272,11 +444,75 @@ export default function TakeAssessmentPage() {
       document.removeEventListener("copy", preventCopyPaste);
       document.removeEventListener("paste", preventCopyPaste);
       document.removeEventListener("contextmenu", preventCopyPaste);
+      window.removeEventListener("keydown", preventKeyboardShortcuts);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      window.removeEventListener("resize", detectDevTools);
+      window.removeEventListener("move", handleWindowMove);
+      document.head.removeChild(style);
 
       clearInterval(autoSaveTimer);
       initializationRef.current = false;
     };
   }, [id, user, router]);
+
+  // Add new auto-save effect after state initialization
+  useEffect(() => {
+    let autoSaveInterval;
+
+    if (submissionId && !submitting) {
+      const saveProgress = async () => {
+        if (!isValidSaveState()) {
+          console.warn("Skipping auto-save due to violation state");
+          setAutoSaveStatus("error");
+          return;
+        }
+
+        try {
+          setAutoSaveStatus("saving");
+          await saveAssessmentProgress(submissionId, {
+            answers,
+            currentQuestionIndex,
+            timeSpentPerQuestion,
+            violations: stateRef.current.violations,
+            lastSaveAttempt: new Date(),
+            violations: Object.entries(stateRef.current.violations)
+              .filter(([_, count]) => count > 0)
+              .map(([type, count]) => ({ type, count })),
+          });
+          setAutoSaveStatus("saved");
+        } catch (error) {
+          console.error("Auto-save failed:", error);
+          setAutoSaveStatus("error");
+        }
+      };
+
+      // Save every 30 seconds
+      autoSaveInterval = setInterval(saveProgress, 30000);
+
+      // Save when window loses focus
+      const handleVisibilityChange = async () => {
+        if (document.hidden) {
+          await saveProgress();
+        }
+      };
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      return () => {
+        clearInterval(autoSaveInterval);
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange
+        );
+      };
+    }
+  }, [
+    submissionId,
+    answers,
+    currentQuestionIndex,
+    timeSpentPerQuestion,
+    submitting,
+  ]);
 
   // Keep the question timer effect separate as it has different concerns
   useEffect(() => {
@@ -310,11 +546,21 @@ export default function TakeAssessmentPage() {
           ] || 0) + Math.round((Date.now() - lastQuestionChangeTime) / 1000),
       };
 
-      await handleIncompleteAssessment(submissionId, answers, finalTimeSpent);
+      try {
+        await saveAssessmentProgress(submissionId, {
+          answers,
+          currentQuestionIndex,
+          timeSpentPerQuestion: finalTimeSpent,
+          violations: stateRef.current.violations,
+        });
+      } catch (error) {
+        console.error("Failed to save final progress:", error);
+      }
     }
   };
 
   // Handle answer selection with auto-save
+  // TODO: Maybe remove
   const handleAnswerSelect = async (questionId, answerIndex) => {
     const newAnswers = {
       ...answers,
@@ -333,12 +579,18 @@ export default function TakeAssessmentPage() {
     }
   };
 
-  const handleAnswerInput = async (questionId, value, type) => {
+  const handleAnswerInput = async (questionId, value, type, images = []) => {
+    if (!isValidSaveState()) {
+      toast.error("Cannot save changes due to violation of exam rules");
+      return;
+    }
+
     const newAnswers = {
       ...answers,
       [questionId]: {
         value,
         type,
+        images,
         timestamp: new Date().toISOString(),
       },
     };
@@ -346,11 +598,54 @@ export default function TakeAssessmentPage() {
 
     try {
       setAutoSaveStatus("saving");
-      await updateSubmissionProgress(submissionId, newAnswers);
+      await saveAssessmentProgress(submissionId, {
+        answers: newAnswers,
+        currentQuestionIndex,
+        timeSpentPerQuestion,
+        violations: stateRef.current.violations,
+        lastSaveAttempt: new Date(),
+      });
       setAutoSaveStatus("saved");
     } catch (error) {
       console.error("Failed to save answer:", error);
       setAutoSaveStatus("error");
+    }
+  };
+
+  const handleQuestionImageUpload = async (file, questionId) => {
+    try {
+      setIsUploadingImage(true); // Disable violation checking
+      setUploadingImage(true);
+      const result = await uploadFile(
+        file,
+        `assessments/${id}/submissions/${submissionId}/images`
+      );
+
+      const newImages = {
+        ...questionImages,
+        [questionId]: [...(questionImages[questionId] || []), result],
+      };
+      setQuestionImages(newImages);
+
+      // Update the answer to include the image reference
+      const currentAnswer = answers[questionId] || { value: "", images: [] };
+      const newAnswer = {
+        ...currentAnswer,
+        images: [...(currentAnswer.images || []), result],
+      };
+
+      handleAnswerInput(
+        questionId,
+        currentAnswer.value,
+        "open_answer",
+        newAnswer.images
+      );
+    } catch (error) {
+      toast.error("Failed to upload image");
+      console.error("Image upload error:", error);
+    } finally {
+      setUploadingImage(false);
+      setIsUploadingImage(false); // Re-enable violation checking
     }
   };
 
@@ -366,10 +661,31 @@ export default function TakeAssessmentPage() {
     });
   };
 
-  const navigateQuestions = (direction) => {
+  const navigateQuestions = async (direction) => {
+    if (!isValidSaveState()) {
+      toast.error("Cannot save progress due to violation of exam rules");
+      return;
+    }
+
     const newIndex = currentQuestionIndex + direction;
     if (newIndex >= 0 && newIndex < assessment.questions.length) {
-      setCurrentQuestionIndex(newIndex);
+      try {
+        setAutoSaveStatus("saving");
+        await saveAssessmentProgress(submissionId, {
+          answers,
+          currentQuestionIndex: newIndex,
+          timeSpentPerQuestion,
+          violations: stateRef.current.violations,
+          lastSaveAttempt: new Date(),
+        });
+        setAutoSaveStatus("saved");
+        setCurrentQuestionIndex(newIndex);
+      } catch (error) {
+        console.error("Failed to save progress while navigating:", error);
+        setAutoSaveStatus("error");
+        // Still allow navigation even if save fails
+        setCurrentQuestionIndex(newIndex);
+      }
     }
   };
 
@@ -467,16 +783,76 @@ export default function TakeAssessmentPage() {
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-4">
             <RichTextEditor
               key={question.id} // Add this key prop
               content={answers[question.id]?.value || ""}
+              allowImageUpload={false}
+              onUploadStart={() => setIsUploadingImage(true)}
+              onUploadEnd={() => setIsUploadingImage(false)}
               onChange={(value) =>
-                handleAnswerInput(question.id, value, "open_answer")
+                handleAnswerInput(
+                  question.id,
+                  value,
+                  "open_answer",
+                  answers[question.id]?.images || []
+                )
               }
               error={false}
               preventCopy={true}
             />
+
+            {/* Add image upload section */}
+            <div className="border-t pt-4 hidden">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">
+                  Attached Images
+                </span>
+                <FileUpload
+                  onUploadComplete={(file) =>
+                    handleQuestionImageUpload(file, question.id)
+                  }
+                  onError={(error) => toast.error(error)}
+                  allowedTypes={["image/jpeg", "image/png", "image/gif"]}
+                  maxSize={5242880} // 5MB
+                  path={`assessments/${id}/submissions/${submissionId}/images`}
+                  multiple={true}
+                />
+              </div>
+
+              {/* Display uploaded images */}
+              {answers[question.id]?.images &&
+                answers[question.id].images.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-2">
+                    {answers[question.id].images.map((image, idx) => (
+                      <div key={idx} className="relative group">
+                        <img
+                          src={image.url}
+                          alt={`Upload ${idx + 1}`}
+                          className="rounded-lg w-full h-32 object-cover"
+                        />
+                        <button
+                          onClick={() => {
+                            const newImages = answers[
+                              question.id
+                            ].images.filter((_, i) => i !== idx);
+                            handleAnswerInput(
+                              question.id,
+                              answers[question.id].value,
+                              "open_answer",
+                              newImages
+                            );
+                          }}
+                          className="absolute top-1 right-1 p-1 bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <XCircleIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+
             <div className="flex justify-between text-sm text-gray-500 select-none">
               <span>
                 Characters:{" "}
@@ -485,6 +861,7 @@ export default function TakeAssessmentPage() {
                     .length
                 }
               </span>
+              <span>Images: {(answers[question.id]?.images || []).length}</span>
               <span>Max points: {question.maxPoints || 10}</span>
             </div>
           </div>
@@ -492,6 +869,44 @@ export default function TakeAssessmentPage() {
       </div>
     );
   };
+
+  // Add fullscreen warning if not in fullscreen
+  if (!isFullScreen && !isUploadingImage) {
+    return (
+      <div className="fixed inset-0 bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl mb-4">Fullscreen Required</h1>
+          <button
+            onClick={enterFullScreen}
+            className="px-4 py-2 bg-blue-600 rounded"
+          >
+            Enter Fullscreen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Add Warning Modal Component
+  const WarningModal = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-md w-full p-6">
+        <div className="flex items-center space-x-3 text-red-600 mb-4">
+          <XCircleIcon className="h-6 w-6" />
+          <h3 className="text-lg font-semibold">Warning</h3>
+        </div>
+        <p className="text-gray-600 mb-6">{warningMessage}</p>
+        <div className="flex justify-end">
+          <button
+            onClick={() => setShowWarningModal(false)}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            I Understand
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -683,13 +1098,7 @@ export default function TakeAssessmentPage() {
         </div>
       )}
       <AutoSaveIndicator />
+      {showWarningModal && <WarningModal />}
     </div>
   );
-}
-
-// Helper function to update submission progress
-async function updateSubmissionProgress(submissionId, answers) {
-  // Implement the API call to update submission progress
-  // This could be a new function in firebase/utils.js  // For now, just simulate the API call
-  return new Promise((resolve) => setTimeout(resolve, 500));
 }

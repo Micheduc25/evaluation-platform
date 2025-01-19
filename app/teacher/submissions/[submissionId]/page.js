@@ -4,6 +4,9 @@ import { useSelector } from "react-redux";
 import { useParams, useRouter } from "next/navigation";
 import { getAssessmentResults } from "@/firebase/utils";
 import { format } from "date-fns";
+import Dompurify from "dompurify";
+import Image from "next/image";
+import { PhotoIcon } from "@heroicons/react/24/outline";
 
 export default function SubmissionDetailsPage() {
   const user = useSelector((state) => state.auth.user);
@@ -50,6 +53,101 @@ export default function SubmissionDetailsPage() {
   }
 
   const { submission, assessment, details } = results;
+
+  const renderQuestionAnswer = (question, answer) => {
+    if (question.type === "multiple_choice") {
+      return (
+        <div className="ml-4 space-y-2">
+          {question.options.map((option, optIndex) => (
+            <div
+              key={optIndex}
+              className={`flex items-center space-x-2 ${
+                answer?.selectedAnswer?.value === optIndex ? "font-medium" : ""
+              }`}
+            >
+              <span
+                className={`w-4 h-4 inline-block rounded-full ${
+                  answer?.selectedAnswer?.value === optIndex
+                    ? "bg-blue-600"
+                    : "border border-gray-300"
+                }`}
+              />
+              <span
+                className="prose prose-lg"
+                dangerouslySetInnerHTML={{
+                  __html: Dompurify.sanitize(option),
+                }}
+              />
+              {option === question.correctAnswer && (
+                <span className="text-green-600 text-sm">(Correct Answer)</span>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="ml-4">
+        <h4 className="font-bold">Student's Answer:</h4>
+        <div className="space-y-4">
+          <p
+            className="text-gray-600 whitespace-pre-wrap prose prose-lg"
+            dangerouslySetInnerHTML={{
+              __html: Dompurify.sanitize(
+                `${answer?.selectedAnswer?.value || "No answer provided"}`
+              ),
+            }}
+          />
+
+          {/* Display attached images */}
+          {answer?.selectedAnswer?.images &&
+            answer.selectedAnswer.images.length > 0 && (
+              <div className="mt-4">
+                <h5 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <PhotoIcon className="h-5 w-5" />
+                  Attached Images ({answer.selectedAnswer.images.length})
+                </h5>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {answer.selectedAnswer.images.map((image, idx) => (
+                    <a
+                      key={idx}
+                      href={image.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block group relative"
+                    >
+                      <img
+                        src={image.url}
+                        alt={`Student upload ${idx + 1}`}
+                        className="rounded-lg w-full h-48 object-cover hover:opacity-90 transition-opacity"
+                      />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center">
+                        <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm">
+                          Click to view full size
+                        </span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          {answer?.feedback && (
+            <div className="mt-2 p-2 bg-gray-50 rounded">
+              <p className="text-sm font-medium text-gray-500">Feedback:</p>
+              <p className="text-gray-700">{answer.feedback}</p>
+            </div>
+          )}
+          {answer?.points !== undefined && (
+            <p className="mt-2 text-sm font-medium">
+              Points awarded: {answer.points} / {question.maxPoints}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -164,55 +262,13 @@ export default function SubmissionDetailsPage() {
                     </span>
                   )}
                 </div>
-                <p className="text-gray-700 mb-2">{question.text}</p>
-
-                {question.type === "multiple_choice" ? (
-                  <div className="ml-4 space-y-2">
-                    {question.options.map((option, optIndex) => (
-                      <div
-                        key={optIndex}
-                        className={`flex items-center space-x-2 ${
-                          answer?.selectedAnswer?.value === optIndex
-                            ? "font-medium"
-                            : ""
-                        }`}
-                      >
-                        <span
-                          className={`w-4 h-4 inline-block rounded-full ${
-                            answer?.selectedAnswer?.value === optIndex
-                              ? "bg-blue-600"
-                              : "border border-gray-300"
-                          }`}
-                        />
-                        <span>{option}</span>
-                        {option === question.correctAnswer && (
-                          <span className="text-green-600 text-sm">
-                            (Correct Answer)
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="ml-4">
-                    <p className="text-gray-600 whitespace-pre-wrap">
-                      {answer?.selectedAnswer?.value || "No answer provided"}
-                    </p>
-                    {answer?.feedback && (
-                      <div className="mt-2 p-2 bg-gray-50 rounded">
-                        <p className="text-sm font-medium text-gray-500">
-                          Feedback:
-                        </p>
-                        <p className="text-gray-700">{answer.feedback}</p>
-                      </div>
-                    )}
-                    {answer?.points !== undefined && (
-                      <p className="mt-2 text-sm font-medium">
-                        Points awarded: {answer.points} / {question.points}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <p
+                  className="text-gray-700 mb-4 prose prose-lg"
+                  dangerouslySetInnerHTML={{
+                    __html: Dompurify.sanitize(question.text),
+                  }}
+                />
+                {renderQuestionAnswer(question, answer)}
               </div>
             );
           })}

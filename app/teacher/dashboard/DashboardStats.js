@@ -2,7 +2,7 @@ export default function DashboardStats({ stats }) {
   if (!stats) return null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 h-fit">
       <StatCard
         title="Total Assessments"
         value={stats.totalAssessments}

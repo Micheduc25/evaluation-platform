@@ -2,11 +2,16 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format, isValid } from "date-fns";
-import { ClockIcon, UserCircleIcon } from "@heroicons/react/24/outline";
+import {
+  ClockIcon,
+  UserCircleIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
 
 export default function PendingSubmissions({
   submissions = [],
   onGrade,
+  onDelete,
   loading = false,
   error = null,
 }) {
@@ -17,6 +22,13 @@ export default function PendingSubmissions({
       `/teacher/assessments/${assessmentId}/submissions/${submissionId}/grade`
     );
     if (onGrade) onGrade();
+  };
+
+  const handleDelete = async (submissionId, e) => {
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this submission?")) {
+      if (onDelete) await onDelete(submissionId);
+    }
   };
 
   const formatSubmissionDate = (date) => {
@@ -52,13 +64,23 @@ export default function PendingSubmissions({
             </p>
           )}
         </div>
-        <button
-          onClick={() => handleGrade(submission.assessmentId, submission.id)}
-          className="px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-full 
-                   hover:bg-blue-100 transition-colors font-medium"
-        >
-          Grade Now
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => handleDelete(submission.id, e)}
+            className="p-1.5 text-gray-400 hover:text-red-500 rounded-full 
+                     hover:bg-red-50 transition-colors"
+            title="Delete submission"
+          >
+            <TrashIcon className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => handleGrade(submission.assessmentId, submission.id)}
+            className="px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-full 
+                     hover:bg-blue-100 transition-colors font-medium"
+          >
+            Grade Now
+          </button>
+        </div>
       </div>
       {submission.questions?.length > 0 && (
         <div className="mt-3 text-xs text-gray-500">
