@@ -12,11 +12,11 @@ export default function SignupPage() {
     // Redirect to dashboard if user is already authenticated
     if (!loading && user) {
       if (user.role === "student") {
-        router.replace("/dashboard");
+        router.replace("/student/dashboard");
       } else if (user.role === "teacher") {
-        router.replace("/teacher");
+        router.replace("/teacher/dashboard");
       } else if (user.role === "admin") {
-        router.replace("/admin");
+        router.replace("/admin/dashboard");
       }
     }
   }, [user, loading, router]);
