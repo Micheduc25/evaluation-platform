@@ -20,12 +20,14 @@ export const MenuBar = ({
   if (!editor) return null;
 
   const buttonStyle = (isActive) => `
-    p-1.5 rounded hover:bg-gray-100 transition-colors
+    p-1 sm:p-1.5 rounded hover:bg-gray-100 transition-colors text-xs sm:text-sm
     ${isActive ? "bg-blue-50 text-blue-600" : "text-gray-600"}
     focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50
   `;
 
-  const Divider = () => <div className="w-px h-6 bg-gray-200 mx-2" />;
+  const Divider = () => (
+    <div className="hidden sm:block w-px h-6 bg-gray-200 mx-1 sm:mx-2" />
+  );
 
   const handleImageUpload = async (file) => {
     if (file?.url) {
@@ -62,7 +64,7 @@ export const MenuBar = ({
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-1 mb-2 p-1 bg-white rounded-md">
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-0.5 sm:gap-1 mb-2 p-1 bg-white rounded-md">
         {/* Text styling */}
         <div className="flex items-center">
           <button
@@ -103,7 +105,7 @@ export const MenuBar = ({
             className={buttonStyle(editor.isActive("heading", { level: 2 }))}
             title="Heading 2"
           >
-            H2
+            <span className="text-[10px] sm:text-sm">H2</span>
           </button>
           <button
             type="button"
@@ -113,7 +115,7 @@ export const MenuBar = ({
             className={buttonStyle(editor.isActive("heading", { level: 3 }))}
             title="Heading 3"
           >
-            H3
+            <span className="text-[10px] sm:text-sm">H3</span>
           </button>
         </div>
 
@@ -127,7 +129,7 @@ export const MenuBar = ({
             className={buttonStyle(editor.isActive("bulletList"))}
             title="Bullet List"
           >
-            •
+            <span className="text-lg sm:text-xl">•</span>
           </button>
           <button
             type="button"
@@ -135,7 +137,7 @@ export const MenuBar = ({
             className={buttonStyle(editor.isActive("orderedList"))}
             title="Numbered List"
           >
-            1.
+            <span className="text-[10px] sm:text-sm">1.</span>
           </button>
         </div>
 
@@ -149,7 +151,7 @@ export const MenuBar = ({
             className={buttonStyle(editor.isActive("code"))}
             title="Code"
           >
-            <code>{"</>"}</code>
+            <code className="text-[10px] sm:text-sm">{"</>"}</code>
           </button>
           <button
             type="button"
@@ -157,7 +159,7 @@ export const MenuBar = ({
             className={buttonStyle(editor.isActive("blockquote"))}
             title="Quote"
           >
-            ""
+            <span className="text-[10px] sm:text-sm">""</span>
           </button>
         </div>
 
@@ -172,7 +174,7 @@ export const MenuBar = ({
                 className={buttonStyle(showImageUpload)}
                 title="Insert Image"
               >
-                <ImageIcon className="w-5 h-5" />
+                <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
           </>
@@ -288,7 +290,7 @@ export default function RichTextEditor({
       onPaste={preventCopy ? (e) => e.preventDefault() : undefined}
       onDrop={preventCopy ? (e) => e.preventDefault() : undefined}
     >
-      <div className="p-2 border-b bg-gray-50 sticky top-0">
+      <div className="p-1 sm:p-2 border-b bg-gray-50 sticky top-0 z-10">
         <MenuBar
           editor={editor}
           onUploadStart={onUploadStart}

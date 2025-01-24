@@ -207,28 +207,28 @@ export default function TakeTutorialPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <div className="flex justify-between items-center">
+      <div className="bg-white rounded-lg shadow-sm p-3 sm:p-4 mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
               {tutorial?.title}
             </h1>
-            <p className="text-gray-600 mt-1">
+            <p className="text-sm sm:text-base text-gray-600 mt-1">
               Practice Mode - Take your time to learn
             </p>
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="bg-green-100 text-green-800 px-4 py-2 rounded-full flex items-center">
-              <BookOpenIcon className="h-5 w-5 mr-2" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
+            <div className="bg-green-100 text-green-800 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full flex items-center">
+              <BookOpenIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
               Tutorial
             </div>
             <button
               onClick={handlePrint}
-              className="flex items-center px-4 py-2 text-green-700 bg-green-50 rounded-full hover:bg-green-100 transition-colors"
+              className="flex items-center px-3 py-1.5 sm:px-4 sm:py-2 text-green-700 bg-green-50 rounded-full hover:bg-green-100 transition-colors w-full sm:w-auto justify-center"
             >
-              <PrinterIcon className="h-5 w-5 mr-2" />
+              <PrinterIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
               Print Tutorial
             </button>
           </div>
@@ -236,17 +236,17 @@ export default function TakeTutorialPage() {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Question Navigation */}
-        <div className="md:col-span-1">
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="font-semibold mb-4">Progress</h3>
-            <div className="grid grid-cols-4 md:grid-cols-2 gap-2">
+        <div className="lg:col-span-1">
+          <div className="bg-white rounded-lg shadow-sm p-3 sm:p-4">
+            <h3 className="font-semibold mb-3 sm:mb-4">Progress</h3>
+            <div className="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-2 gap-1.5 sm:gap-2">
               {tutorial?.questions.map((q, idx) => (
                 <button
                   key={q.id}
                   onClick={() => setCurrentQuestionIndex(idx)}
-                  className={`p-2 rounded-lg text-center
+                  className={`p-1.5 sm:p-2 rounded-lg text-center text-sm sm:text-base
                     ${
                       currentQuestionIndex === idx
                         ? "bg-green-100 text-green-700"
@@ -263,12 +263,12 @@ export default function TakeTutorialPage() {
         </div>
 
         {/* Question Content */}
-        <div className="md:col-span-3">
-          <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="lg:col-span-3">
+          <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
             {tutorial?.questions[currentQuestionIndex] && (
               <>
-                <div className="mb-6">
-                  <h2 className="text-xl font-medium">
+                <div className="mb-4 sm:mb-6">
+                  <h2 className="text-lg sm:text-xl font-medium">
                     Question {currentQuestionIndex + 1} of{" "}
                     {tutorial.questions.length}
                   </h2>
@@ -276,15 +276,15 @@ export default function TakeTutorialPage() {
 
                 {renderQuestion(tutorial.questions[currentQuestionIndex])}
 
-                <div className="flex justify-between mt-8">
+                <div className="flex justify-between mt-6 sm:mt-8">
                   <button
                     onClick={() =>
                       setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))
                     }
                     disabled={currentQuestionIndex === 0}
-                    className="flex items-center px-4 py-2 text-gray-700 disabled:opacity-50"
+                    className="flex items-center px-3 py-1.5 sm:px-4 sm:py-2 text-gray-700 disabled:opacity-50 text-sm sm:text-base"
                   >
-                    <ChevronLeftIcon className="h-5 w-5 mr-2" />
+                    <ChevronLeftIcon className="h-4 w-4 sm:h-5 sm:w-5 mr-1 sm:mr-2" />
                     Previous
                   </button>
 
@@ -292,7 +292,7 @@ export default function TakeTutorialPage() {
                     <button
                       onClick={handleSubmit}
                       disabled={isSubmitting}
-                      className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                      className="px-4 sm:px-6 py-1.5 sm:py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 text-sm sm:text-base"
                     >
                       {isSubmitting ? "Completing..." : "Complete Tutorial"}
                     </button>
@@ -303,10 +303,10 @@ export default function TakeTutorialPage() {
                           Math.min(tutorial.questions.length - 1, prev + 1)
                         )
                       }
-                      className="flex items-center px-4 py-2 text-gray-700"
+                      className="flex items-center px-3 py-1.5 sm:px-4 sm:py-2 text-gray-700 text-sm sm:text-base"
                     >
                       Next
-                      <ChevronRightIcon className="h-5 w-5 ml-2" />
+                      <ChevronRightIcon className="h-4 w-4 sm:h-5 sm:w-5 ml-1 sm:ml-2" />
                     </button>
                   )}
                 </div>
@@ -320,7 +320,7 @@ export default function TakeTutorialPage() {
         <div className="fixed bottom-4 right-4">
           <button
             onClick={() => router.push("/student/dashboard")}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm sm:text-base"
           >
             Back to Dashboard
           </button>
