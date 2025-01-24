@@ -26,6 +26,7 @@ export default function DashboardPage() {
   const { user, loading } = useSelector((state) => state.auth);
   const [stats, setStats] = useState(null);
   const [availableAssessments, setAvailableAssessments] = useState([]);
+  const [availableTutorials, setAvailableTutorials] = useState([]);
   const [upcomingExams, setUpcomingExams] = useState([]);
   const [recentResults, setRecentResults] = useState([]);
   const [pendingResults, setPendingResults] = useState([]);
@@ -51,7 +52,8 @@ export default function DashboardPage() {
           ]);
 
         setStats(newstats);
-        setAvailableAssessments(available);
+        setAvailableAssessments(available.assessments);
+        setAvailableTutorials(available.tutorials);
         setUpcomingExams(upcoming);
         setRecentResults(results);
         setPendingResults(pending);
@@ -67,9 +69,13 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, [user]);
 
-  const handleStartAssessment = async (assessmentId) => {
+  const handleStartAssessment = async (assessmentId, type) => {
     try {
-      router.push(`/student/assessments/${assessmentId}/take`);
+      router.push(
+        `/student/${
+          type === "tutorial" ? "tutorials" : "assessments"
+        }/${assessmentId}/take`
+      );
     } catch (error) {
       console.error("Error starting assessment:", error);
       toast.error("Failed to start assessment");
@@ -165,11 +171,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Assessment List Section - Replace the old available assessments section */}
+      {/* Available Assessments */}
       <div className="mt-8">
         <AssessmentList
           assessments={availableAssessments}
           onStartAssessment={handleStartAssessment}
+          title="Available Assessments"
+        />
+      </div>
+
+      {/* Available Tutorials */}
+      <div className="mt-8">
+        <AssessmentList
+          assessments={availableTutorials}
+          onStartAssessment={handleStartAssessment}
+          title="Practice Tutorials"
+          isTutorial={true}
         />
       </div>
 

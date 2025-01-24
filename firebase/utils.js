@@ -89,10 +89,13 @@ export const createAssessment = async (assessmentData) => {
         ...assessmentData,
         createdAt: new Date(),
         endDate:
-          assessmentData.endDate instanceof Date
+          assessmentData.type === "tutorial"
+            ? null // No end date for tutorials
+            : assessmentData.endDate instanceof Date
             ? assessmentData.endDate
             : new Date(assessmentData.endDate),
-        classroomId: assessmentData.classroomId, // Add classroom association
+        classroomId: assessmentData.classroomId,
+        type: assessmentData.type || "assessment", // Add type field
       };
 
       transaction.set(docRef, dataToStore);
@@ -359,7 +362,6 @@ export const getTeacherStats = async (teacherId) => {
 
 export const getAvailableAssessments = async (studentId) => {
   try {
-    // Get student's classrooms
     const membershipsQuery = query(
       collection(db, "classroom_memberships"),
       where("studentId", "==", studentId)
@@ -367,22 +369,22 @@ export const getAvailableAssessments = async (studentId) => {
     const memberships = await getDocs(membershipsQuery);
     const classroomIds = memberships.docs.map((doc) => doc.data().classroomId);
 
-    if (classroomIds.length === 0) return [];
+    if (classroomIds.length === 0) return { assessments: [], tutorials: [] };
 
     const now = new Date();
     const assessmentsQuery = query(
       collection(db, "assessments"),
-      where("classroomId", "in", classroomIds),
-      where("endDate", ">=", now),
-      orderBy("endDate", "asc")
+      where("classroomId", "in", classroomIds)
     );
 
     const querySnapshot = await getDocs(assessmentsQuery);
     const assessments = [];
+    const tutorials = [];
 
     for (const doc of querySnapshot.docs) {
-      const assessment = { id: doc.id, ...doc.data() };
-      // Check if student has already submitted this assessment
+      const item = { id: doc.id, ...doc.data() };
+
+      // Check if student has already completed this item
       const submissionQuery = query(
         collection(db, "submissions"),
         where("assessmentId", "==", doc.id),
@@ -393,18 +395,26 @@ export const getAvailableAssessments = async (studentId) => {
       const submissionSnapshot = await getDocs(submissionQuery);
 
       if (submissionSnapshot.empty) {
-        assessments.push(assessment);
+        if (item.type === "tutorial") {
+          tutorials.push(item);
+        } else if (item.endDate >= now) {
+          assessments.push(item);
+        }
       }
     }
 
-    return assessments;
+    return { assessments, tutorials };
   } catch (error) {
     console.error("Error getting available assessments:", error);
     throw error;
   }
 };
 
-export const startAssessment = async (assessmentId, studentId) => {
+export const startAssessment = async (
+  assessmentId,
+  studentId,
+  type = "assessment"
+) => {
   try {
     return await runTransaction(db, async (transaction) => {
       // Check for existing in-progress submission
@@ -431,7 +441,10 @@ export const startAssessment = async (assessmentId, studentId) => {
       }
 
       const now = new Date();
-      if (now > assessmentDoc.data().endDate.toDate()) {
+      if (
+        type === "assessment" &&
+        now > assessmentDoc.data().endDate.toDate()
+      ) {
         throw new Error("Assessment has expired");
       }
 
@@ -1157,6 +1170,28 @@ export const deleteSubmission = async (submissionId) => {
     return true;
   } catch (error) {
     console.error("Error deleting submission:", error);
+    throw error;
+  }
+};
+
+// Add this new function for submitting tutorials
+export const submitTutorial = async (submissionId, submissionData) => {
+  try {
+    const submissionRef = doc(db, "submissions", submissionId);
+    await updateDoc(submissionRef, {
+      ...submissionData,
+      type: "tutorial",
+      status: "completed",
+      completedAt: new Date(),
+    });
+
+    return {
+      success: true,
+      submissionId,
+      completedAt: new Date(),
+    };
+  } catch (error) {
+    console.error("Error submitting tutorial:", error);
     throw error;
   }
 };

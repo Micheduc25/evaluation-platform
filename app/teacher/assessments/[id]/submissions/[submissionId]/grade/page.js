@@ -41,7 +41,17 @@ export default function GradingInterface() {
           throw new Error("Submission or assessment not found");
         }
 
-        setSubmission(submissionDoc.data());
+        // Also fetch the student's user document to get their name
+        const studentDoc = await getDoc(
+          doc(db, "users", submissionDoc.data().studentId)
+        );
+
+        setSubmission({
+          ...submissionDoc.data(),
+          studentName: studentDoc.exists()
+            ? studentDoc.data().displayName
+            : "Unknown Student",
+        });
         setAssessment(assessmentDoc.data());
       } catch (error) {
         toast.error(error.message || "Error loading submission");
@@ -54,6 +64,14 @@ export default function GradingInterface() {
 
     fetchData();
   }, [assessmentId, submissionId, router]);
+
+  const getTotalTimeSpent = () => {
+    const timeDiff =
+      submission.startedAt.toDate().getTime() -
+      submission.submittedAt.toDate().getTime();
+    const seconds = Math.abs(timeDiff / 1000);
+    return seconds;
+  };
 
   const handleLocalGradeChange = (questionId, field, value) => {
     setLocalGrades((prev) => ({
@@ -296,7 +314,71 @@ export default function GradingInterface() {
             </button>
           )}
         </div>
-
+        {/* Add Student Information Section */}
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">
+                Student Name
+              </h3>
+              <p className="text-gray-900">{submission.studentName}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Student ID</h3>
+              <p className="text-gray-900 w-32 overflow-hidden overflow-ellipsis">
+                {submission.studentId}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">
+                Submission Date
+              </h3>
+              <p className="text-gray-900">
+                {submission.submittedAt.toDate().toLocaleDateString()}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Assessment</h3>
+              <p className="text-gray-900">{assessment.title}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">
+                Total Points
+              </h3>
+              <p className="text-gray-900">{assessment.totalPoints} points</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Time Spent</h3>
+              <p className="text-gray-900">
+                {Math.floor(getTotalTimeSpent() / 3600)} hours{" "}
+                {Math.floor((getTotalTimeSpent() % 3600) / 60)} minutes
+              </p>
+            </div>
+          </div>
+        </div>
+        {/* Add Violations Section */}
+        {(submission.violations?.length > 0 ||
+          submission.tabViolations > 0) && (
+          <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200 mb-4">
+            <h3 className="text-sm font-medium text-red-800 mb-2">
+              Violations Detected
+            </h3>
+            <div className="space-y-2">
+              {submission.tabViolations > 0 && (
+                <div className="flex items-center text-red-700">
+                  <span className="mr-2">•</span>
+                  <p>Tab switches: {submission.tabViolations} times</p>
+                </div>
+              )}
+              {submission.violations?.map((violation, index) => (
+                <div key={index} className="flex items-center text-red-700">
+                  <span className="mr-2">•</span>
+                  <p>{violation}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {submission.answers.map((answer, index) => {
           const question = assessment.questions.find(
             (q) => q.id === answer.questionId

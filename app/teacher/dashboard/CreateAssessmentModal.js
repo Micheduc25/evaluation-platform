@@ -22,6 +22,7 @@ export default function CreateAssessmentModal({
     classroomId: "",
     endDate: "",
     questions: [],
+    type: "assessment", // Add type field
   });
   const [errors, setErrors] = useState({});
 
@@ -50,6 +51,11 @@ export default function CreateAssessmentModal({
   const validateStep1 = () => {
     const newErrors = {};
     if (!formData.title.trim()) newErrors.title = "Title is required";
+
+    // if it is tutorial validate only title
+    if (formData.type === "tutorial") {
+      return Object.keys(newErrors).length === 0;
+    }
     if (!formData.endDate) newErrors.endDate = "End date is required";
     if (formData.duration < 15)
       newErrors.duration = "Minimum duration is 15 minutes";
@@ -93,6 +99,11 @@ export default function CreateAssessmentModal({
       }
     });
 
+    if (formData.type === "tutorial") {
+      setErrors(newErrors);
+      return Object.keys(newErrors).length === 0;
+    }
+
     if (totalAssignedPoints > formData.totalPoints) {
       newErrors.totalPoints = `Total assigned points (${totalAssignedPoints}) cannot exceed total assessment points (${formData.totalPoints})`;
     }
@@ -101,7 +112,8 @@ export default function CreateAssessmentModal({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleNextStep = () => {
+  const handleNextStep = (e) => {
+    e.preventDefault();
     if (validateStep1()) {
       setCurrentStep(2);
     } else {
@@ -124,10 +136,13 @@ export default function CreateAssessmentModal({
         questions: formData.questions.map((q) => ({
           ...q,
           // Keep the original points/maxPoints based on question type
-          points: q.type === "multiple_choice" ? Number(q.points) : undefined,
-          maxPoints: q.type === "open_answer" ? Number(q.maxPoints) : undefined,
+          points: q.type === "multiple_choice" ? Number(q.points) : null,
+          maxPoints: q.type === "open_answer" ? Number(q.maxPoints) : null,
         })),
-        endDate: new Date(formData.endDate),
+        endDate:
+          formData.type === "tutorial"
+            ? new Date()
+            : new Date(formData.endDate),
         createdBy: user.uid,
         status: "active",
         submissionCount: 0,
@@ -138,7 +153,10 @@ export default function CreateAssessmentModal({
       onAssessmentCreated({
         id: assessmentId,
         ...assessmentData,
-        endDate: endDate.toISOString(), // Serialize for Redux/client usage
+        endDate:
+          formData.type === "tutorial"
+            ? new Date().toISOString()
+            : endDate.toISOString(), // Serialize for Redux/client usage
       });
       onClose();
     } catch (error) {
@@ -309,73 +327,73 @@ export default function CreateAssessmentModal({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Duration (minutes)
-                      </label>
-                      <input
-                        type="number"
-                        name="duration"
-                        value={formData.duration}
-                        onChange={handleChange}
-                        min="1"
-                        required
-                        className={`w-full px-3 py-2 mt-1 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                          errors.duration ? "border-red-500" : "border-gray-300"
-                        }`}
-                      />
-                      {errors.duration && (
-                        <p className="mt-1 text-sm text-red-500">
-                          {errors.duration}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Total Points
-                      </label>
-                      <input
-                        type="number"
-                        name="totalPoints"
-                        value={formData.totalPoints}
-                        onChange={handleChange}
-                        min="1"
-                        required
-                        className={`w-full px-3 py-2 mt-1 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                          errors.totalPoints
-                            ? "border-red-500"
-                            : "border-gray-300"
-                        }`}
-                      />
-                      {errors.totalPoints && (
-                        <p className="mt-1 text-sm text-red-500">
-                          {errors.totalPoints}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      End Date
+                      Type
                     </label>
-                    <input
-                      type="datetime-local"
-                      name="endDate"
-                      value={formData.endDate}
+                    <select
+                      name="type"
+                      value={formData.type}
                       onChange={handleChange}
-                      required
-                      className={`w-full px-3 py-2 mt-1 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
-                        errors.endDate ? "border-red-500" : "border-gray-300"
-                      }`}
-                    />
-                    {errors.endDate && (
-                      <p className="mt-1 text-sm text-red-500">
-                        {errors.endDate}
-                      </p>
-                    )}
+                      className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md"
+                    >
+                      <option value="assessment">Assessment</option>
+                      <option value="tutorial">Tutorial</option>
+                    </select>
                   </div>
+
+                  {/* Hide duration and end date for tutorials */}
+                  {formData.type === "assessment" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Duration (minutes)
+                          </label>
+                          <input
+                            type="number"
+                            name="duration"
+                            value={formData.duration}
+                            onChange={handleChange}
+                            min="1"
+                            required
+                            className={`w-full px-3 py-2 mt-1 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                              errors.duration
+                                ? "border-red-500"
+                                : "border-gray-300"
+                            }`}
+                          />
+                          {errors.duration && (
+                            <p className="mt-1 text-sm text-red-500">
+                              {errors.duration}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            End Date
+                          </label>
+                          <input
+                            type="datetime-local"
+                            name="endDate"
+                            value={formData.endDate}
+                            onChange={handleChange}
+                            required
+                            className={`w-full px-3 py-2 mt-1 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                              errors.endDate
+                                ? "border-red-500"
+                                : "border-gray-300"
+                            }`}
+                          />
+                          {errors.endDate && (
+                            <p className="mt-1 text-sm text-red-500">
+                              {errors.endDate}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-6 animate-fadeIn">

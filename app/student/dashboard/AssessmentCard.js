@@ -11,10 +11,8 @@ export default function AssessmentCard({ assessment, onStart, classroom }) {
   const [isLoading, setIsLoading] = useState(true);
   const auth = useSelector((state) => state.auth);
 
-  console.log(auth);
-
   const handleStart = () => {
-    onStart(assessment.id);
+    onStart(assessment.id, assessment.type);
   };
 
   useEffect(() => {
@@ -73,9 +71,21 @@ export default function AssessmentCard({ assessment, onStart, classroom }) {
 
         <div className="mt-4 pt-4 border-t">
           <div className="flex flex-col items-stretch justify-between ">
-            <span className="text-sm text-gray-500 mb-2">
-              Due: {assessment.endDate.toDate().toLocaleDateString()}
-            </span>
+            <div className="flex justify-between mb-2">
+              <span className="text-sm text-gray-500 mb-2">
+                Due:{" "}
+                {!assessment.endDate
+                  ? "N/A"
+                  : assessment.endDate.toDate().toLocaleDateString()}
+              </span>
+
+              {assessment.type === "tutorial" && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  Tutorial
+                </span>
+              )}
+            </div>
+
             {assessment.status === "active" && !isLoading && (
               <button
                 onClick={handleStart}

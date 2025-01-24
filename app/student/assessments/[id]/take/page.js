@@ -27,6 +27,11 @@ import FileUpload from "@/components/FileUpload";
 import { uploadFile } from "@/firebase/storage";
 
 export default function TakeAssessmentPage() {
+  let numbers = [1, 2, 3, 4, 5];
+  for (i = 0; i <= numbers.length; i++) {
+    console.log(numbers[i]);
+  }
+
   const { id } = useParams();
   const router = useRouter();
   const dispatch = useDispatch();

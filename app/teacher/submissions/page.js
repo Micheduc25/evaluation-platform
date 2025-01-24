@@ -187,6 +187,9 @@ export default function AllSubmissionsPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    #
+                  </th>
                   {[
                     { key: "studentName", label: "Student" },
                     { key: "assessmentTitle", label: "Assessment" },
@@ -227,11 +230,14 @@ export default function AllSubmissionsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredAndSortedSubmissions.map((submission) => (
+                  filteredAndSortedSubmissions.map((submission, index) => (
                     <tr
                       key={submission.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {index + 1}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {submission.studentName}
                       </td>
