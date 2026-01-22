@@ -18,6 +18,28 @@ import {
 } from "firebase/firestore";
 
 // User document helpers
+export const serializeUser = (user) => {
+  if (!user) return null;
+  return {
+    ...user,
+    createdAt: user.createdAt?.toDate?.()
+      ? user.createdAt.toDate().toISOString()
+      : user.createdAt instanceof Date
+      ? user.createdAt.toISOString()
+      : user.createdAt,
+    lastLogin: user.lastLogin?.toDate?.()
+      ? user.lastLogin.toDate().toISOString()
+      : user.lastLogin instanceof Date
+      ? user.lastLogin.toISOString()
+      : user.lastLogin,
+    updatedAt: user.updatedAt?.toDate?.()
+      ? user.updatedAt.toDate().toISOString()
+      : user.updatedAt instanceof Date
+      ? user.updatedAt.toISOString()
+      : user.updatedAt,
+  };
+};
+
 export const createUserDocument = async (user, additionalData = {}) => {
   if (!user) return;
 
@@ -155,6 +177,71 @@ export const updateAssessment = async (assessmentId, assessmentData) => {
     return assessmentId;
   } catch (error) {
     console.error("Error updating assessment:", error);
+    throw error;
+  }
+};
+
+/**
+ * Clones an existing assessment without any student submissions or associated data.
+ * @param {string} sourceAssessmentId - The ID of the assessment to clone
+ * @param {Object} overrides - Optional overrides for the cloned assessment
+ * @param {string} overrides.title - Custom title for the clone
+ * @param {string} overrides.classroomId - Target classroom for the clone
+ * @param {Date|string} overrides.endDate - New end date for the clone
+ * @param {string} overrides.createdBy - UID of the teacher creating the clone
+ * @returns {Promise<{id: string, assessment: Object}>} The cloned assessment ID and data
+ */
+export const cloneAssessment = async (sourceAssessmentId, overrides = {}) => {
+  try {
+    // Fetch the source assessment
+    const sourceAssessment = await getAssessment(sourceAssessmentId);
+    if (!sourceAssessment) {
+      throw new Error("Source assessment not found");
+    }
+
+    // Clone questions with fresh IDs
+    const clonedQuestions = sourceAssessment.questions.map((question) => ({
+      ...question,
+      id: Date.now() + Math.random(), // Generate unique ID
+    }));
+
+    // Build the cloned assessment data
+    const clonedData = {
+      title: overrides.title || `[Clone] ${sourceAssessment.title}`,
+      description: sourceAssessment.description || "",
+      duration: sourceAssessment.duration,
+      totalPoints: sourceAssessment.totalPoints,
+      classroomId: overrides.classroomId || sourceAssessment.classroomId,
+      type: sourceAssessment.type || "assessment",
+      questions: clonedQuestions,
+      createdBy: overrides.createdBy,
+      createdAt: new Date(),
+      endDate:
+        overrides.endDate instanceof Date
+          ? overrides.endDate
+          : overrides.endDate
+          ? new Date(overrides.endDate)
+          : null,
+      status: "active",
+      submissionCount: 0, // Reset - no submissions for clone
+    };
+
+    // Create the new assessment document
+    const docRef = doc(collection(db, "assessments"));
+    await setDoc(docRef, clonedData);
+
+    return {
+      id: docRef.id,
+      assessment: {
+        id: docRef.id,
+        ...clonedData,
+        // Serialize dates for Redux/client usage
+        createdAt: clonedData.createdAt.toISOString(),
+        endDate: clonedData.endDate ? clonedData.endDate.toISOString() : null,
+      },
+    };
+  } catch (error) {
+    console.error("Error cloning assessment:", error);
     throw error;
   }
 };
@@ -397,8 +484,12 @@ export const getAvailableAssessments = async (studentId) => {
       if (submissionSnapshot.empty) {
         if (item.type === "tutorial") {
           tutorials.push(item);
-        } else if (item.endDate >= now) {
-          assessments.push(item);
+        } else {
+          // Convert Firestore Timestamp to Date for proper comparison
+          const endDate = item.endDate?.toDate ? item.endDate.toDate() : new Date(item.endDate);
+          if (endDate >= now) {
+            assessments.push(item);
+          }
         }
       }
     }
@@ -418,8 +509,7 @@ export const startAssessment = async (
   try {
     return await runTransaction(db, async (transaction) => {
       // Check for existing in-progress submission
-
-      const submissionQuery = query(
+      const inProgressQuery = query(
         collection(db, "submissions"),
         where("assessmentId", "==", assessmentId),
         where("studentId", "==", studentId),
@@ -427,9 +517,23 @@ export const startAssessment = async (
         limit(1)
       );
 
-      const submissionSnapshot = await getDocs(submissionQuery);
-      if (!submissionSnapshot.empty) {
-        return submissionSnapshot.docs[0].id;
+      const inProgressSnapshot = await getDocs(inProgressQuery);
+      if (!inProgressSnapshot.empty) {
+        return inProgressSnapshot.docs[0].id;
+      }
+
+      // Check for COMPLETED or PENDING_REVIEW submission (One attempt policy)
+      const completedQuery = query(
+        collection(db, "submissions"),
+        where("assessmentId", "==", assessmentId),
+        where("studentId", "==", studentId),
+        where("status", "in", ["completed", "pending_review"]),
+        limit(1)
+      );
+      
+      const completedSnapshot = await getDocs(completedQuery);
+      if (!completedSnapshot.empty) {
+         throw new Error("Assessment already submitted");
       }
 
       // Verify assessment exists and hasn't expired

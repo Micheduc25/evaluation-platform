@@ -5,9 +5,12 @@ import { getDoc, doc } from "firebase/firestore";
 import { db } from "@/firebase/client";
 import { gradeOpenAnswerQuestion } from "@/firebase/utils";
 import { toast } from "react-hot-toast";
-import { PencilIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { PencilIcon, CheckIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import DomPurify from "dompurify";
 import Image from "next/image";
+import { ViolationSummary, RiskScoreBadge } from "@/components/AntiCheatWarning";
+import ViolationReport from "@/components/ViolationReport";
+import { calculateRiskScore } from "@/services/antiCheatService";
 
 export default function GradingInterface() {
   const router = useRouter();
@@ -358,25 +361,15 @@ export default function GradingInterface() {
         </div>
         {/* Add Violations Section */}
         {(submission.violations?.length > 0 ||
-          submission.tabViolations > 0) && (
-          <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200 mb-4">
-            <h3 className="text-sm font-medium text-red-800 mb-2">
-              Violations Detected
-            </h3>
-            <div className="space-y-2">
-              {submission.tabViolations > 0 && (
-                <div className="flex items-center text-red-700">
-                  <span className="mr-2">•</span>
-                  <p>Tab switches: {submission.tabViolations} times</p>
-                </div>
-              )}
-              {submission.violations?.map((violation, index) => (
-                <div key={index} className="flex items-center text-red-700">
-                  <span className="mr-2">•</span>
-                  <p>{violation}</p>
-                </div>
-              ))}
-            </div>
+          submission.tabViolations > 0 ||
+          submission.forcedSubmission ||
+          (typeof submission.violations === "object" && 
+           Object.values(submission.violations).some(v => v > 0))) && (
+          <div className="mb-6">
+            <ViolationReport 
+              submission={submission}
+              assessment={assessment}
+            />
           </div>
         )}
         {submission.answers.map((answer, index) => {

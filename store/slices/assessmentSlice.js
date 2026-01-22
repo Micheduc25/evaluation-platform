@@ -39,6 +39,9 @@ const assessmentSlice = createSlice({
     setGradingStatus: (state, action) => {
       state.gradingStatus = action.payload;
     },
+    addAssessment: (state, action) => {
+      state.assessments.unshift(action.payload); // Add to beginning of list
+    },
   },
 });
 
@@ -50,5 +53,6 @@ export const {
   updateAssessment,
   updateSubmissionGrade,
   setGradingStatus,
+  addAssessment,
 } = assessmentSlice.actions;
 export default assessmentSlice.reducer;

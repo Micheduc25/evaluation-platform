@@ -11,9 +11,11 @@ import {
   TrashIcon,
   ChevronUpIcon,
   ChevronDownIcon,
+  DocumentDuplicateIcon,
 } from "@heroicons/react/24/outline";
 import { removeAssessment } from "@/store/slices/assessmentSlice";
 import { toast } from "react-hot-toast";
+import CloneAssessmentModal from "./CloneAssessmentModal";
 
 export default function AssessmentList({ assessments, isLoading }) {
   const dispatch = useDispatch();
@@ -25,6 +27,7 @@ export default function AssessmentList({ assessments, isLoading }) {
   const [classrooms, setClassrooms] = useState([]);
   const [selectedClassroom, setSelectedClassroom] = useState("all");
   const [filteredAssessments, setFilteredAssessments] = useState(assessments);
+  const [cloneModalAssessment, setCloneModalAssessment] = useState(null);
 
   useEffect(() => {
     loadClassrooms();
@@ -223,8 +226,17 @@ export default function AssessmentList({ assessments, isLoading }) {
                     onClick={() => handleEdit(assessment.id)}
                     className="text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-50"
                     disabled={deletingId === assessment.id}
+                    title="Edit"
                   >
                     <PencilIcon className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setCloneModalAssessment(assessment)}
+                    className="text-gray-600 hover:text-green-600 transition-colors disabled:opacity-50"
+                    disabled={deletingId === assessment.id}
+                    title="Clone"
+                  >
+                    <DocumentDuplicateIcon className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => handleDelete(assessment.id)}
@@ -243,6 +255,15 @@ export default function AssessmentList({ assessments, isLoading }) {
           </tbody>
         </table>
       </div>
+
+      {/* Clone Assessment Modal */}
+      {cloneModalAssessment && (
+        <CloneAssessmentModal
+          assessment={cloneModalAssessment}
+          onClose={() => setCloneModalAssessment(null)}
+          onCloneComplete={() => setCloneModalAssessment(null)}
+        />
+      )}
     </div>
   );
 }

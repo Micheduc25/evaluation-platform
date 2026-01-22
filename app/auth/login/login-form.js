@@ -9,7 +9,7 @@ import { auth } from "@/firebase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDispatch } from "react-redux";
-import { getUserDocument } from "@/firebase/utils";
+import { getUserDocument, serializeUser } from "@/firebase/utils";
 import { setUser } from "@/store/slices/authSlice";
 
 export default function LoginForm() {
@@ -36,8 +36,27 @@ export default function LoginForm() {
       }
 
       // Fetch user data from Firestore
-      const userData = await getUserDocument(userCredential.user.uid);
-      dispatch(setUser({ ...userData, emailVerified: true }));
+      let userData = await getUserDocument(userCredential.user.uid);
+
+      // Handle missing user document or role
+      if (!userData) {
+        userData = {
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+          displayName: userCredential.user.displayName,
+          role: "student",
+          createdAt: new Date(),
+          lastLogin: new Date(),
+        };
+      } else if (!userData.role) {
+        userData = { ...userData, role: "student" };
+      }
+
+      const serializedUser = serializeUser({
+        ...userData,
+        emailVerified: true,
+      });
+      dispatch(setUser(serializedUser));
       router.push(`/${userData.role}/dashboard`);
     } catch (error) {
       setError(error.message);

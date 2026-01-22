@@ -1,0 +1,89 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Helper Functions ---
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isStudent(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user is a teacher (requires reading user doc)
+    function isTeacher() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "teacher";
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // --- Collection Rules ---
+
+    // Users
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      // Users can edit their own profile, Teachers can edit any (if needed)
+      allow write: if isOwner(userId) || isTeacher();
+    }
+
+    // Classrooms
+    match /classrooms/{classroomId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher();
+    }
+
+    // Classroom Memberships
+    match /classroom_memberships/{membershipId} {
+      allow read: if isAuthenticated();
+      // Teachers can manage memberships, Students can add/remove themselves
+      allow write: if isTeacher() || (isAuthenticated() && request.resource.data.studentId == request.auth.uid) || (isAuthenticated() && resource.data.studentId == request.auth.uid);
+    }
+
+    // Assessments
+    match /assessments/{assessmentId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isTeacher();
+      
+      // Update: Teacher has full access. 
+      // Student can ONLY update 'submissionCount' (required for submitAssessment transaction)
+      allow update: if isTeacher() 
+                    || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submissionCount']));
+    }
+
+    // Submissions
+    match /submissions/{submissionId} {
+      allow read: if isAuthenticated();
+      
+      // Create: Anyone authenticated (student) can create a submission for themselves
+      allow create: if isAuthenticated() 
+                    && request.resource.data.studentId == request.auth.uid
+                    && request.resource.data.status == 'in_progress';
+      
+      // Update:
+      // 1. Teachers can update anything (grading)
+      // 2. Students can update ONLY if the submission is currently 'in_progress'. 
+      //    This prevents modifying/re-submitting once status is 'completed' or 'pending_review'.
+      allow update: if isTeacher() 
+                    || (isStudent(resource.data.studentId) && resource.data.status == 'in_progress');
+      
+      // Delete:
+      // 1. Teachers can delete
+      // 2. Students can delete their own IN_PROGRESS submissions (cleanup logic in submitAssessment)
+      allow delete: if isTeacher() 
+                    || (isStudent(resource.data.studentId) && resource.data.status == 'in_progress');
+    }
+    
+    // Images (stored in subcollections or parallel? The code implies storage, but if there are docs...)
+    // Based on code, images are in Storage, not Firestore documents.
+    // But if there were subcollections:
+    match /{path=**}/images/{imageId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

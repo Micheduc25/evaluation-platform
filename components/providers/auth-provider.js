@@ -5,7 +5,7 @@ import { useDispatch } from "react-redux";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase/client";
 import { setUser, setLoading } from "@/store/slices/authSlice";
-import { getUserDocument } from "@/firebase/utils";
+import { getUserDocument, serializeUser } from "@/firebase/utils";
 
 export function AuthProvider({ children }) {
   const dispatch = useDispatch();
@@ -17,18 +17,13 @@ export function AuthProvider({ children }) {
       try {
         if (user) {
           const firestoreUser = await getUserDocument(user.uid);
-          dispatch(
-            setUser({
-              uid: user.uid,
-              email: firestoreUser.email,
-              displayName: firestoreUser.displayName,
-              role: firestoreUser.role,
-              createdAt:
-                firestoreUser.createdAt?.toDate().toISOString() || null,
-              lastLogin:
-                firestoreUser.lastLogin?.toDate().toISOString() || null,
-            })
-          );
+          // Only dispatch if we successfully retrieved the user document
+          if (firestoreUser) {
+            dispatch(setUser(serializeUser(firestoreUser)));
+          } else {
+            // Handle edge case where auth user exists but firestore doc doesn't
+            dispatch(setUser(null));
+          }
         } else {
           dispatch(setUser(null));
         }

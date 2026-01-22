@@ -10,7 +10,7 @@ import { auth } from "@/firebase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDispatch } from "react-redux";
-import { createUserDocument } from "@/firebase/utils";
+import { createUserDocument, serializeUser } from "@/firebase/utils";
 import { setUser } from "@/store/slices/authSlice";
 
 export default function SignupForm() {
@@ -38,7 +38,8 @@ export default function SignupForm() {
         role: "student",
       });
 
-      dispatch(setUser(userData));
+      const serializedUser = serializeUser(userData);
+      dispatch(setUser(serializedUser));
       setVerificationSent(true);
     } catch (error) {
       setError(error.message);
