@@ -60,6 +60,7 @@ export function useAntiCheat({
   const focusMonitorRef = useRef(null);
   const cleanupFunctionsRef = useRef([]);
   const violationsRef = useRef(violations);
+  const ignoreNextBlurRef = useRef(false);
 
   // Keep violations ref up to date
   useEffect(() => {
@@ -67,8 +68,9 @@ export function useAntiCheat({
   }, [violations]);
 
   const [gracePeriod, setGracePeriod] = useState(true);
+  const [monitoringGracePeriod, setMonitoringGracePeriod] = useState(false);
 
-  // Grace period effect
+  // Initial grace period effect
   useEffect(() => {
     const timer = setTimeout(() => {
       setGracePeriod(false);
@@ -76,9 +78,25 @@ export function useAntiCheat({
     return () => clearTimeout(timer);
   }, []);
 
+  // Monitoring grace period effect - triggers when detection is re-enabled (e.g. after upload)
+  useEffect(() => {
+    if (!isDisabled) {
+      setMonitoringGracePeriod(true);
+      const timer = setTimeout(() => {
+        setMonitoringGracePeriod(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isDisabled]);
+
   // Handle violation detection
   const handleViolation = useCallback((type, message) => {
-    if (isDisabled || gracePeriod) return;
+    if (isDisabled || gracePeriod || monitoringGracePeriod) return;
+
+    if (type === "windowBlur" && ignoreNextBlurRef.current) {
+      ignoreNextBlurRef.current = false;
+      return;
+    }
 
     setViolations((prev) => {
       const newCount = (prev[type] || 0) + 1;
@@ -233,8 +251,18 @@ export function useAntiCheat({
     };
   }, [isDisabled, handleViolation]);
 
+  // Ignore the next blur event (useful for file uploads or fullscreen transitions)
+  const ignoreNextBlur = useCallback(() => {
+    ignoreNextBlurRef.current = true;
+    // Auto-reset after 5 seconds if no blur happens
+    setTimeout(() => {
+      ignoreNextBlurRef.current = false;
+    }, 5000);
+  }, []);
+
   // Enter fullscreen
   const enterFullScreen = useCallback(() => {
+    ignoreNextBlur();
     const element = document.documentElement;
     if (element.requestFullscreen) {
       element.requestFullscreen().catch(() => {});
@@ -245,7 +273,7 @@ export function useAntiCheat({
     } else if (element.msRequestFullscreen) {
       element.msRequestFullscreen();
     }
-  }, []);
+  }, [ignoreNextBlur]);
 
   // Record typing activity
   const recordKeyPress = useCallback(() => {
@@ -331,6 +359,7 @@ export function useAntiCheat({
     recordPaste,
     resetTypingAnalytics,
     temporarilyDisable,
+    ignoreNextBlur,
     
     // Getters
     hasExceededLimits,

@@ -2,8 +2,16 @@
 import { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { toast } from "react-hot-toast";
-import { getStudentClassrooms, joinClassroomByCode } from "@/firebase/utils";
-import { UserGroupIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
+import {
+  getStudentClassrooms,
+  joinClassroomByCode,
+  removeStudentFromClassroom,
+} from "@/firebase/utils";
+import {
+  UserGroupIcon,
+  ArrowRightIcon,
+  ArrowLeftOnRectangleIcon,
+} from "@heroicons/react/24/outline";
 
 export default function StudentClassroomsPage() {
   const user = useSelector((state) => state.auth.user);
@@ -42,6 +50,25 @@ export default function StudentClassroomsPage() {
       toast.error("Failed to join classroom");
     } finally {
       setIsJoining(false);
+    }
+  };
+
+  const handleExitClassroom = async (classroomId, classroomName) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to leave "${classroomName}"? You will lose access to its assessments.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await removeStudentFromClassroom(classroomId, user.uid);
+      toast.success("Successfully left classroom");
+      loadClassrooms();
+    } catch (error) {
+      console.error("Error leaving classroom:", error);
+      toast.error("Failed to leave classroom");
     }
   };
 
@@ -113,6 +140,15 @@ export default function StudentClassroomsPage() {
                 <span className="text-sm text-gray-500">
                   Joined {classroom.joinedAt?.toDate().toLocaleDateString()}
                 </span>
+                <button
+                  onClick={() =>
+                    handleExitClassroom(classroom.id, classroom.name)
+                  }
+                  className="ml-4 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Leave Classroom"
+                >
+                  <ArrowLeftOnRectangleIcon className="h-5 w-5" />
+                </button>
               </div>
             </div>
           ))}

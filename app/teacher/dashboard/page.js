@@ -10,6 +10,7 @@ import {
 import AssessmentList from "./AssessmentList";
 import DashboardStats from "./DashboardStats";
 import CreateAssessmentModal from "./CreateAssessmentModal";
+import JsonImportModal from "./JsonImportModal";
 import PendingSubmissions from "./PendingSubmissions";
 import Link from "next/link";
 import { ArrowRightIcon, ClipboardIcon } from "@heroicons/react/24/outline";
@@ -21,6 +22,7 @@ export default function TeacherDashboard() {
   const [stats, setStats] = useState(null);
   const [pendingSubmissions, setPendingSubmissions] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const handleDeleteSubmission = async (submissionId) => {
@@ -84,12 +86,21 @@ export default function TeacherDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">Teacher Dashboard</h1>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-blue-500 text-white px-4 py-2 rounded"
-            >
-              Create New Assessment
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors"
+                title="Upload JSON file"
+              >
+                Import JSON
+              </button>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+              >
+                Create New Assessment
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -130,6 +141,15 @@ export default function TeacherDashboard() {
           {isModalOpen && (
             <CreateAssessmentModal
               onClose={() => setIsModalOpen(false)}
+              onAssessmentCreated={(newAssessment) => {
+                setAssessments([...assessments, newAssessment]);
+              }}
+            />
+          )}
+
+          {isImportModalOpen && (
+            <JsonImportModal
+              onClose={() => setIsImportModalOpen(false)}
               onAssessmentCreated={(newAssessment) => {
                 setAssessments([...assessments, newAssessment]);
               }}

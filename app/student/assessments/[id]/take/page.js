@@ -83,8 +83,8 @@ export default function TakeAssessmentPage() {
       handleSubmit(true);
       toast.error(message + ". Assessment submitted automatically.");
     },
-    // Disable detection during loading/uploading or if assessment isn't loaded
-    isDisabled: uploadingImage || isLoading || !assessment,
+    // Disable detection during loading/uploading, or while submitting, or if assessment isn't loaded
+    isDisabled: uploadingImage || isLoading || !assessment || submitting,
   });
 
   // Keep stateRef updated
@@ -103,9 +103,8 @@ export default function TakeAssessmentPage() {
 
   // Submit handler
   const handleSubmit = async (forced = false) => {
-    if (!forced && !confirm("Are you sure you want to submit your assessment?")) {
-      return;
-    }
+    // Note: Manual submission is already confirmed via SubmitConfirmModal
+    // Forced submission (e.g. time up or max violations) doesn't need confirmation
 
     const currentState = stateRef.current;
     setSubmitting(true);
@@ -168,7 +167,7 @@ export default function TakeAssessmentPage() {
   };
 
   // Initialize assessment
-  const { enterFullScreen } = antiCheat;
+  const { enterFullScreen, ignoreNextBlur } = antiCheat;
   useEffect(() => {
     if (!user || initializationRef.current) return;
 
@@ -476,6 +475,7 @@ export default function TakeAssessmentPage() {
             isUploadDisabled={!antiCheat.isValidSaveState()}
             onUploadStart={() => setUploadingImage(true)}
             onUploadEnd={() => setUploadingImage(false)}
+            onBrowse={ignoreNextBlur}
           />
         </div>
 

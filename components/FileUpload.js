@@ -10,6 +10,7 @@ const FileUpload = ({
   maxSize = 5242880, // 5MB
   path = "uploads",
   multiple = false,
+  onBrowse,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -122,6 +123,7 @@ const FileUpload = ({
               <button
                 onClick={(e) => {
                   e.preventDefault();
+                  if (onBrowse) onBrowse();
                   fileInputRef.current?.click();
                 }}
                 className="text-blue-500 hover:text-blue-600 mx-1"

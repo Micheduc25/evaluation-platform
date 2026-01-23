@@ -23,6 +23,7 @@ export default function QuestionRenderer({
   isUploadDisabled,
   onUploadStart,
   onUploadEnd,
+  onBrowse,
 }) {
   const createMarkup = (content) => {
     return { __html: DOMPurify.sanitize(content) };
@@ -86,6 +87,7 @@ export default function QuestionRenderer({
           onUploadComplete={onImageUpload}
           onUploadStart={onUploadStart}
           onUploadEnd={onUploadEnd}
+          onBrowse={onBrowse}
           disabled={isUploadDisabled || uploadingImage}
           allowedTypes={["image/jpeg", "image/png"]}
           maxSize={2097152} // 2MB

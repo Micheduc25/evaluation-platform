@@ -35,7 +35,9 @@ service cloud.firestore {
     // Classrooms
     match /classrooms/{classroomId} {
       allow read: if isAuthenticated();
-      allow write: if isTeacher();
+      allow create, delete: if isTeacher();
+      allow update: if isTeacher() 
+                    || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentCount']));
     }
 
     // Classroom Memberships
