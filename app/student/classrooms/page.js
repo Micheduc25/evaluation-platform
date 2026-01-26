@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
+import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 import {
   getStudentClassrooms,
@@ -11,10 +12,12 @@ import {
   UserGroupIcon,
   ArrowRightIcon,
   ArrowLeftOnRectangleIcon,
+  DocumentIcon,
 } from "@heroicons/react/24/outline";
 
 export default function StudentClassroomsPage() {
   const user = useSelector((state) => state.auth.user);
+  const router = useRouter();
   const [classrooms, setClassrooms] = useState([]);
   const [joinCode, setJoinCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
@@ -136,20 +139,28 @@ export default function StudentClassroomsPage() {
                     <UserGroupIcon className="h-5 w-5" />
                     <span>{classroom.studentCount} students</span>
                   </div>
-                </div>
-                <span className="text-sm text-gray-500">
-                  Joined {classroom.joinedAt?.toDate().toLocaleDateString()}
-                </span>
+              </div>
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() =>
-                    handleExitClassroom(classroom.id, classroom.name)
-                  }
-                  className="ml-4 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  onClick={() => router.push(`/student/classrooms/${classroom.id}`)}
+                  className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="View Materials"
+                >
+                  <DocumentIcon className="h-5 w-5" />
+                  <span className="text-sm">Materials</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleExitClassroom(classroom.id, classroom.name);
+                  }}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                   title="Leave Classroom"
                 >
                   <ArrowLeftOnRectangleIcon className="h-5 w-5" />
                 </button>
               </div>
+            </div>
             </div>
           ))}
 

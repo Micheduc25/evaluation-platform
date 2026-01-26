@@ -1,0 +1,30 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Default rule - deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Assessments Images
+    match /assessments/{assessmentId}/images/{imageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Classroom Materials
+    match /classrooms/{classroomId}/materials/{fileName} {
+      allow read: if isAuthenticated();
+      // Allow authenticated users to upload. 
+      // In a real app, we'd want custom claims to verify 'teacher' role here
+      // or use a Cloud Function to verify/move files.
+      // For now, this unblocks the feature.
+      allow write: if isAuthenticated();
+    }
+  }
+}

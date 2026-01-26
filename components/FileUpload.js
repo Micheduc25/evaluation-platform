@@ -11,6 +11,8 @@ const FileUpload = ({
   path = "uploads",
   multiple = false,
   onBrowse,
+  autoUpload = true,
+  onFileSelect,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -59,16 +61,28 @@ const FileUpload = ({
             setPreview(reader.result);
           };
           reader.readAsDataURL(file);
+        } else {
+          // For non-images, we can still show a generic preview or just keep the icon
+          // But 'preview' state is currently used for image src.
+          // Let's keep it null for non-images or handle it if needed.
         }
 
+        if (!autoUpload) {
+          if (onFileSelect) onFileSelect(file);
+          continue;
+        }
+
+        setUploading(true);
         const result = await uploadFile(file, path, setProgress);
         if (onUploadComplete) onUploadComplete(result);
       }
     } catch (error) {
       if (onError) onError(error.message);
     } finally {
-      setUploading(false);
-      setProgress(0);
+      if (autoUpload) {
+        setUploading(false);
+        setProgress(0);
+      }
     }
   };
 

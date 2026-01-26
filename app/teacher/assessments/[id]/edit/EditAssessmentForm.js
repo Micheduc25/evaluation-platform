@@ -109,7 +109,11 @@ export default function EditAssessmentForm({ assessment }) {
       router.push("/teacher/dashboard");
     } catch (error) {
       console.error("Error updating assessment:", error);
-      toast.error(error.message || "Failed to update assessment");
+      if (error.code === "resource-exhausted") {
+        toast.error("Daily quota exceeded. Please try again tomorrow.");
+      } else {
+        toast.error(error.message || "Failed to update assessment");
+      }
     } finally {
       setIsSubmitting(false);
     }

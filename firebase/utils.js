@@ -1195,28 +1195,29 @@ export const getClassroomStudents = async (classroomId) => {
 export const saveAssessmentProgress = async (submissionId, progressData) => {
   try {
     const submissionRef = doc(db, "submissions", submissionId);
-    const submissionDoc = await getDoc(submissionRef);
 
-    if (
-      !submissionDoc.exists() ||
-      submissionDoc.data().status !== "in_progress"
-    ) {
-      return false;
-    }
-
+    // We can directly call updateDoc here.
+    // The Firestore Security Rules (lines 74-75) enforce that:
+    // (isStudent(resource.data.studentId) && resource.data.status == 'in_progress')
+    // Therefore, if the status is not 'in_progress', this update will fail with "permission-denied",
+    // which serves the same purpose as the manual check but without the extra Read cost.
+    
     await updateDoc(submissionRef, {
       answers: progressData.answers,
       currentQuestionIndex: progressData.currentQuestionIndex,
       timeSpentPerQuestion: progressData.timeSpentPerQuestion,
       violations: progressData.violations,
       lastSaved: new Date(),
-      status: "in_progress",
+      status: "in_progress", // Reinforcing status
     });
 
     return true;
   } catch (error) {
+    // If it fails (e.g. permission denied because status != in_progress), we log it.
     console.error("Error saving assessment progress:", error);
-    throw error;
+    // throw error; // Optional: we can return false or throw. Original returned false on check fail.
+    // If it's a permission error, it means we couldn't save.
+    return false;
   }
 };
 

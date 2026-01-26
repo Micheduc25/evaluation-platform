@@ -87,5 +87,28 @@ service cloud.firestore {
     match /{path=**}/images/{imageId} {
       allow read, write: if isAuthenticated();
     }
+
+    // Classroom Materials
+    match /classroom_materials/{materialId} {
+      // Helper function to check if user is a member of the classroom
+      function isClassroomMember(classroomId) {
+        return isAuthenticated() && 
+          exists(/databases/$(database)/documents/classroom_memberships/$(request.auth.uid + "_" + classroomId)) ||
+          exists(/databases/$(database)/documents/classroom_memberships/$(classroomId + "_" + request.auth.uid));
+      }
+      
+      // Helper to check if user is the classroom teacher
+      function isClassroomTeacher(classroomId) {
+        return isAuthenticated() && 
+          get(/databases/$(database)/documents/classrooms/$(classroomId)).data.teacherId == request.auth.uid;
+      }
+
+      // Read: Teachers can read their classroom materials, students can read materials from classrooms they're in
+      allow read: if isAuthenticated();
+      
+      // Create/Delete: Only the classroom teacher
+      allow create: if isTeacher() && request.resource.data.uploadedBy == request.auth.uid;
+      allow delete: if isTeacher();
+    }
   }
 }

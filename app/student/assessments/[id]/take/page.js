@@ -23,6 +23,7 @@ import SubmitConfirmModal from "./SubmitConfirmModal";
 
 import AntiCheatWarning from "@/components/AntiCheatWarning";
 import { useAntiCheat } from "@/hooks/useAntiCheat";
+import { debounce } from "@/utils/debounce";
 
 /**
  * TakeAssessmentPage - Main component for taking assessments
@@ -66,6 +67,20 @@ export default function TakeAssessmentPage() {
     lastQuestionChangeTime: Date.now(),
     currentQuestionIndex: 0,
   });
+
+  // Debounced save function
+  const debouncedSave = useRef(
+    debounce(async (submissionId, data) => {
+      try {
+        setAutoSaveStatus("saving");
+        await saveAssessmentProgress(submissionId, data);
+        setAutoSaveStatus("saved");
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+        setAutoSaveStatus("error");
+      }
+    }, 2000)
+  ).current;
 
   // Anti-cheat hook
   const antiCheat = useAntiCheat({
@@ -296,19 +311,13 @@ export default function TakeAssessmentPage() {
     };
     setAnswers(newAnswers);
 
-    try {
-      setAutoSaveStatus("saving");
-      await saveAssessmentProgress(submissionId, {
-        answers: newAnswers,
-        currentQuestionIndex,
-        timeSpentPerQuestion,
-        violations: antiCheat.violations,
-      });
-      setAutoSaveStatus("saved");
-    } catch (err) {
-      console.error("Failed to save answer:", err);
-      setAutoSaveStatus("error");
-    }
+    // Debounced save
+    debouncedSave(submissionId, {
+      answers: newAnswers,
+      currentQuestionIndex,
+      timeSpentPerQuestion,
+      violations: antiCheat.violations,
+    });
   };
 
   // Image upload handler
