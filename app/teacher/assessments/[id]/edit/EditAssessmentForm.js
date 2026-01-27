@@ -1,17 +1,22 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useDispatch } from "react-redux";
-import { updateAssessment } from "@/firebase/utils";
+import { useDispatch, useSelector } from "react-redux";
+import { updateAssessment, getTeacherClassrooms } from "@/firebase/utils";
 import { updateAssessment as updateAssessmentState } from "@/store/slices/assessmentSlice";
 import QuestionEditor from "./QuestionEditor";
 import { toast } from "react-hot-toast";
 import { PlusIcon } from "@heroicons/react/24/outline";
 
 export default function EditAssessmentForm({ assessment }) {
+  const user = useSelector((state) => state.auth.user);
+  const [classrooms, setClassrooms] = useState([]);
   const [formData, setFormData] = useState({
     title: assessment?.title || "",
     description: assessment?.description || "",
+    type: assessment?.type || "assessment",
+    classroomId: assessment?.classroomId || "",
+    duration: assessment?.duration || 60,
     endDate: assessment?.endDate
       ? new Date(
           assessment.endDate.toDate().getTime() -
@@ -28,13 +33,29 @@ export default function EditAssessmentForm({ assessment }) {
   const router = useRouter();
   const dispatch = useDispatch();
 
+  useEffect(() => {
+    const loadClassrooms = async () => {
+      if (user?.uid) {
+        const data = await getTeacherClassrooms(user.uid);
+        setClassrooms(data);
+      }
+    };
+    loadClassrooms();
+  }, [user]);
+
   const validateForm = () => {
     const newErrors = {};
     if (!formData.title.trim()) {
       newErrors.title = "Title is required";
     }
-    if (!formData.endDate) {
-      newErrors.endDate = "Due date is required";
+    
+    if (formData.type === "assessment") {
+        if (!formData.endDate) {
+        newErrors.endDate = "Due date is required";
+        }
+        if (formData.duration < 15) {
+            newErrors.duration = "Minimum duration is 15 minutes";
+        }
     }
     if (formData.questions.length === 0) {
       newErrors.questions = "At least one question is required";
@@ -80,14 +101,18 @@ export default function EditAssessmentForm({ assessment }) {
 
     try {
       // Add timezone offset back when creating the Date object
-      const localDate = new Date(formData.endDate);
-      const endDate = new Date(
-        localDate.getTime() + localDate.getTimezoneOffset() * 60000
-      );
+      let endDate = null;
+      if (formData.type === "assessment" && formData.endDate) {
+        const localDate = new Date(formData.endDate);
+        endDate = new Date(
+            localDate.getTime() + localDate.getTimezoneOffset() * 60000
+        );
+      }
 
       const updatedAssessment = {
         ...formData,
         endDate, // For Firebase
+        duration: formData.type === "assessment" ? Number(formData.duration) : null,
       };
 
       await updateAssessment(assessment.id, updatedAssessment);
@@ -175,10 +200,29 @@ export default function EditAssessmentForm({ assessment }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="relative min-h-screen pb-20" // Add these classes
+      className="relative min-h-screen pb-20"
     >
       <div className="space-y-6 max-w-4xl mx-auto p-6 text-black">
         <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
+            <div>
+            <label className="block text-sm font-medium text-gray-700">
+                Classroom
+            </label>
+            <select
+                name="classroomId"
+                value={formData.classroomId}
+                onChange={handleInputChange}
+                required
+                className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="">Select a classroom</option>
+                {classrooms.map((classroom) => (
+                <option key={classroom.id} value={classroom.id}>
+                    {classroom.name}
+                </option>
+                ))}
+            </select>
+            </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Title
@@ -213,22 +257,59 @@ export default function EditAssessmentForm({ assessment }) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              Due Date and Time
+                Type
             </label>
-            <input
-              type="datetime-local"
-              name="endDate"
-              value={formData.endDate}
-              onChange={handleInputChange}
-              className={`mt-1 block w-full rounded-md border p-2 ${
-                errors.endDate ? "border-red-500" : "border-gray-300"
-              }`}
-              required
-            />
-            {errors.endDate && (
-              <p className="mt-1 text-sm text-red-500">{errors.endDate}</p>
-            )}
+            <select
+                name="type"
+                value={formData.type}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="assessment">Assessment</option>
+                <option value="tutorial">Tutorial</option>
+            </select>
           </div>
+
+        {formData.type === "assessment" && (
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                        Duration (minutes)
+                    </label>
+                    <input
+                        type="number"
+                        name="duration"
+                        value={formData.duration}
+                        onChange={handleInputChange}
+                        min="15"
+                        className={`w-full px-3 py-2 mt-1 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                        errors.duration ? "border-red-500" : "border-gray-300"
+                        }`}
+                    />
+                    {errors.duration && (
+                        <p className="mt-1 text-sm text-red-500">{errors.duration}</p>
+                    )}
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                    Due Date and Time
+                    </label>
+                    <input
+                    type="datetime-local"
+                    name="endDate"
+                    value={formData.endDate}
+                    onChange={handleInputChange}
+                    className={`mt-1 block w-full rounded-md border p-2 ${
+                        errors.endDate ? "border-red-500" : "border-gray-300"
+                    }`}
+                    required
+                    />
+                    {errors.endDate && (
+                    <p className="mt-1 text-sm text-red-500">{errors.endDate}</p>
+                    )}
+                </div>
+            </div>
+        )}
 
           <div className="space-y-4">
             <div className="flex justify-between items-center">
