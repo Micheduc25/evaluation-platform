@@ -5,7 +5,7 @@ import { useDispatch } from "react-redux";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/firebase/client";
 import { setUser, setLoading } from "@/store/slices/authSlice";
-import { getUserDocument, serializeUser } from "@/firebase/utils";
+import { getUserDocument, serializeUser, createUserDocument } from "@/firebase/utils";
 
 export function AuthProvider({ children }) {
   const dispatch = useDispatch();
@@ -21,8 +21,20 @@ export function AuthProvider({ children }) {
           if (firestoreUser) {
             dispatch(setUser(serializeUser(firestoreUser)));
           } else {
-            // Handle edge case where auth user exists but firestore doc doesn't
-            dispatch(setUser(null));
+            console.warn("User document missing. Attempting auto-repair...");
+            // Auto-repair: Create missing user document
+            // Use existing display name or generate a temporary one
+            const generatedName = user.displayName || `Student ${user.uid.slice(0, 5).toUpperCase()}`;
+            
+            const newUser = await createUserDocument(user, { 
+              displayName: generatedName 
+            });
+
+            if (newUser) {
+              dispatch(setUser(serializeUser(newUser)));
+            } else {
+              dispatch(setUser(null));
+            }
           }
         } else {
           dispatch(setUser(null));

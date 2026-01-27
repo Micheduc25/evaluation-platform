@@ -86,10 +86,10 @@ export const updateUserProfile = async (uid, userData) => {
 
   try {
     const userRef = doc(db, "users", uid);
-    await updateDoc(userRef, {
+    await setDoc(userRef, {
       ...userData,
       updatedAt: new Date(),
-    });
+    }, { merge: true });
 
     const updatedUser = await getUserDocument(uid);
     return updatedUser;
