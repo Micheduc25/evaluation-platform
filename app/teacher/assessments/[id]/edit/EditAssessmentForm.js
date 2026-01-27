@@ -24,6 +24,15 @@ export default function EditAssessmentForm({ assessment }) {
         )
           .toISOString()
           .slice(0, 16)
+
+      : "",
+    startDate: assessment?.startDate
+      ? new Date(
+          assessment.startDate.toDate().getTime() -
+            assessment.startDate.toDate().getTimezoneOffset() * 60000
+        )
+          .toISOString()
+          .slice(0, 16)
       : "",
     questions: assessment?.questions || [],
   });
@@ -50,8 +59,14 @@ export default function EditAssessmentForm({ assessment }) {
     }
     
     if (formData.type === "assessment") {
+        if (!formData.startDate) {
+            newErrors.startDate = "Start date is required";
+        }
         if (!formData.endDate) {
         newErrors.endDate = "Due date is required";
+        }
+        if (formData.startDate && formData.endDate && new Date(formData.startDate) >= new Date(formData.endDate)) {
+            newErrors.endDate = "Due date must be after start date";
         }
         if (formData.duration < 15) {
             newErrors.duration = "Minimum duration is 15 minutes";
@@ -102,15 +117,19 @@ export default function EditAssessmentForm({ assessment }) {
     try {
       // Add timezone offset back when creating the Date object
       let endDate = null;
-      if (formData.type === "assessment" && formData.endDate) {
-        const localDate = new Date(formData.endDate);
-        endDate = new Date(
-            localDate.getTime() + localDate.getTimezoneOffset() * 60000
-        );
+      let startDate = null;
+      if (formData.type === "assessment") {
+        if (formData.endDate) {
+            endDate = new Date(formData.endDate);
+        }
+        if (formData.startDate) {
+            startDate = new Date(formData.startDate);
+        }
       }
 
       const updatedAssessment = {
         ...formData,
+        startDate, // For Firebase
         endDate, // For Firebase
         duration: formData.type === "assessment" ? Number(formData.duration) : null,
       };
@@ -120,6 +139,7 @@ export default function EditAssessmentForm({ assessment }) {
       // Create a serializable version for Redux
       const serializedAssessment = {
         ...updatedAssessment,
+        startDate: startDate ? startDate.toISOString() : null,
         endDate: endDate ? endDate.toISOString() : null,
       };
 
@@ -289,6 +309,24 @@ export default function EditAssessmentForm({ assessment }) {
                     {errors.duration && (
                         <p className="mt-1 text-sm text-red-500">{errors.duration}</p>
                     )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Start Date and Time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    name="startDate"
+                    value={formData.startDate}
+                    onChange={handleInputChange}
+                    className={`mt-1 block w-full rounded-md border p-2 ${
+                      errors.startDate ? "border-red-500" : "border-gray-300"
+                    }`}
+                    required
+                  />
+                  {errors.startDate && (
+                    <p className="mt-1 text-sm text-red-500">{errors.startDate}</p>
+                  )}
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700">

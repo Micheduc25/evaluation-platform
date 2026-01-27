@@ -20,6 +20,7 @@ export default function CreateAssessmentModal({
     duration: 60,
     totalPoints: 100,
     classroomId: "",
+    startDate: "",
     endDate: "",
     questions: [],
     type: "assessment", // Add type field
@@ -56,7 +57,11 @@ export default function CreateAssessmentModal({
     if (formData.type === "tutorial") {
       return Object.keys(newErrors).length === 0;
     }
+    if (!formData.startDate) newErrors.startDate = "Start date is required";
     if (!formData.endDate) newErrors.endDate = "End date is required";
+    if (formData.startDate && formData.endDate && new Date(formData.startDate) >= new Date(formData.endDate)) {
+      newErrors.endDate = "End date must be after start date";
+    }
     if (formData.duration < 15)
       newErrors.duration = "Minimum duration is 15 minutes";
     if (formData.totalPoints < 1)
@@ -143,6 +148,7 @@ export default function CreateAssessmentModal({
           formData.type === "tutorial"
             ? new Date()
             : new Date(formData.endDate),
+        startDate: new Date(formData.startDate),
         createdBy: user.uid,
         status: "active",
         submissionCount: 0,
@@ -157,6 +163,7 @@ export default function CreateAssessmentModal({
           formData.type === "tutorial"
             ? new Date().toISOString()
             : endDate.toISOString(), // Serialize for Redux/client usage
+        startDate: new Date(formData.startDate).toISOString(),
       });
       onClose();
     } catch (error) {
@@ -366,6 +373,28 @@ export default function CreateAssessmentModal({
                           {errors.duration && (
                             <p className="mt-1 text-sm text-red-500">
                               {errors.duration}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Start Date
+                          </label>
+                          <input
+                            type="datetime-local"
+                            name="startDate"
+                            value={formData.startDate}
+                            onChange={handleChange}
+                            required
+                            className={`w-full px-3 py-2 mt-1 border rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 ${
+                              errors.startDate
+                                ? "border-red-500"
+                                : "border-gray-300"
+                            }`}
+                          />
+                          {errors.startDate && (
+                            <p className="mt-1 text-sm text-red-500">
+                              {errors.startDate}
                             </p>
                           )}
                         </div>

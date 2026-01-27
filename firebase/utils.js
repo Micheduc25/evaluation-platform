@@ -110,6 +110,9 @@ export const createAssessment = async (assessmentData) => {
       const dataToStore = {
         ...assessmentData,
         createdAt: new Date(),
+        startDate: assessmentData.startDate instanceof Date 
+            ? assessmentData.startDate 
+            : new Date(assessmentData.startDate || Date.now()), // Default to now if not provided
         endDate:
           assessmentData.type === "tutorial"
             ? null // No end date for tutorials
@@ -166,6 +169,10 @@ export const updateAssessment = async (assessmentId, assessmentData) => {
     // Ensure endDate is a proper Date object for Firestore
     const dataToUpdate = {
       ...assessmentData,
+      startDate:
+        assessmentData.startDate instanceof Date
+          ? assessmentData.startDate
+          : new Date(assessmentData.startDate),
       endDate:
         assessmentData.endDate instanceof Date
           ? assessmentData.endDate
@@ -221,7 +228,10 @@ export const cloneAssessment = async (sourceAssessmentId, overrides = {}) => {
           ? overrides.endDate
           : overrides.endDate
           ? new Date(overrides.endDate)
+
           : null,
+
+      startDate: new Date(), // Clones start immediately by default unless specified (could add override if needed)
       status: "active",
       submissionCount: 0, // Reset - no submissions for clone
     };
@@ -237,6 +247,7 @@ export const cloneAssessment = async (sourceAssessmentId, overrides = {}) => {
         ...clonedData,
         // Serialize dates for Redux/client usage
         createdAt: clonedData.createdAt.toISOString(),
+        startDate: clonedData.startDate.toISOString(),
         endDate: clonedData.endDate ? clonedData.endDate.toISOString() : null,
       },
     };
@@ -487,7 +498,10 @@ export const getAvailableAssessments = async (studentId) => {
         } else {
           // Convert Firestore Timestamp to Date for proper comparison
           const endDate = item.endDate?.toDate ? item.endDate.toDate() : new Date(item.endDate);
-          if (endDate >= now) {
+
+          const startDate = item.startDate?.toDate ? item.startDate.toDate() : new Date(item.startDate || 0); // Handle old docs without startDate
+          
+          if (endDate >= now && startDate <= now) {
             assessments.push(item);
           }
         }
@@ -550,6 +564,11 @@ export const startAssessment = async (
         now > assessmentDoc.data().endDate.toDate()
       ) {
         throw new Error("Assessment has expired");
+      }
+      
+      const startDate = assessmentDoc.data().startDate?.toDate ? assessmentDoc.data().startDate.toDate() : new Date(assessmentDoc.data().startDate || 0);
+      if (now < startDate) {
+         throw new Error("Assessment has not started yet");
       }
 
       // Create new submission

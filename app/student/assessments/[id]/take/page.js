@@ -386,7 +386,7 @@ export default function TakeAssessmentPage() {
 
   const getQuestionStatus = (questionId) => {
     if (markedQuestions.has(questionId)) return "marked";
-    if (answers[questionId] !== null) return "answered";
+    if (answers[questionId] !== null && answers[questionId] !== undefined) return "answered";
     return "unanswered";
   };
 
@@ -435,7 +435,7 @@ export default function TakeAssessmentPage() {
         onClose={() => setShowConfirmSubmit(false)}
         onConfirm={() => handleSubmit(false)}
         unansweredCount={
-          assessment.questions.filter((q) => answers[q.id] === null).length
+          assessment.questions.filter((q) => answers[q.id] === null || answers[q.id] === undefined).length
         }
         markedCount={markedQuestions.size}
         submitting={submitting}
