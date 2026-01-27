@@ -8,19 +8,22 @@ import {
   AdjustmentsVerticalIcon,
   MagnifyingGlassIcon,
   TrashIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
-import { getAllSubmissions, deleteSubmission } from "@/firebase/utils";
+import { getAllSubmissions, deleteSubmission, getUserAssessments } from "@/firebase/utils";
 
 export default function AllSubmissionsPage() {
   const user = useSelector((state) => state.auth.user);
   const router = useRouter();
   const [submissions, setSubmissions] = useState([]);
+  const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     status: "all",
     search: "",
     assessment: "all",
   });
+  const [selectedSubmissions, setSelectedSubmissions] = useState(new Set());
   const [sortConfig, setSortConfig] = useState({
     key: "submittedAt",
     direction: "desc",
@@ -31,10 +34,14 @@ export default function AllSubmissionsPage() {
       if (!user?.uid) return;
       try {
         setLoading(true);
-        const data = await getAllSubmissions(user.uid);
-        setSubmissions(data);
+        const [submissionsData, assessmentsData] = await Promise.all([
+          getAllSubmissions(user.uid),
+          getUserAssessments(user.uid, "teacher"),
+        ]);
+        setSubmissions(submissionsData);
+        setAssessments(assessmentsData);
       } catch (error) {
-        console.error("Error loading submissions:", error);
+        console.error("Error loading data:", error);
       } finally {
         setLoading(false);
       }
@@ -58,12 +65,60 @@ export default function AllSubmissionsPage() {
       try {
         await deleteSubmission(submissionId);
         // Update the submissions list after deletion
-        setSubmissions(submissions.filter((sub) => sub.id !== submissionId));
+        setSubmissions((prev) => prev.filter((sub) => sub.id !== submissionId));
+        setSelectedSubmissions((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(submissionId);
+          return newSet;
+        });
       } catch (error) {
         console.error("Error deleting submission:", error);
-        // Optionally show an error message to the user
       }
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (
+      window.confirm(
+        `Are you sure you want to delete ${selectedSubmissions.size} submission(s)? This action cannot be undone.`
+      )
+    ) {
+      try {
+        setLoading(true);
+        await Promise.all(
+          Array.from(selectedSubmissions).map((id) => deleteSubmission(id))
+        );
+        setSubmissions((prev) =>
+          prev.filter((sub) => !selectedSubmissions.has(sub.id))
+        );
+        setSelectedSubmissions(new Set());
+      } catch (error) {
+        console.error("Error performing bulk delete:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      const allIds = filteredAndSortedSubmissions.map((sub) => sub.id);
+      setSelectedSubmissions(new Set(allIds));
+    } else {
+      setSelectedSubmissions(new Set());
+    }
+  };
+
+  const handleSelectSubmission = (id) => {
+    setSelectedSubmissions((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   };
 
   const filteredAndSortedSubmissions = submissions
@@ -96,9 +151,107 @@ export default function AllSubmissionsPage() {
       return (a[sortConfig.key] < b[sortConfig.key] ? -1 : 1) * direction;
     });
 
-  const uniqueAssessments = [
-    ...new Set(submissions.map((sub) => sub.assessmentId)),
-  ];
+  const handleExportCSV = () => {
+    if (filters.assessment === "all") {
+      alert("Please select a specific assessment to export submissions with detailed answers.");
+      return;
+    }
+
+    try {
+      let headers = [
+        "Student Name",
+        "Assessment Title",
+        "Status",
+        "Score",
+        "Total Points",
+        "Submitted At",
+      ];
+
+      // Since we enforce assessment selection, we can always get the questions
+      let questions = [];
+      const assessment = assessments.find((a) => a.id === filters.assessment);
+      
+      if (assessment?.questions) {
+        questions = assessment.questions;
+        headers = [
+          ...headers,
+          ...questions.map((q, i) => {
+            // Truncate question text for header if too long
+            const text = q.text?.length > 50 ? q.text.substring(0, 50) + "..." : q.text || `Question ${i + 1}`;
+            return `Q${i + 1}: ${text}`;
+          }),
+        ];
+      }
+
+      const csvContent = [
+        headers.join(","),
+        ...filteredAndSortedSubmissions.map((sub) => {
+          const submittedAt = sub.submittedAt
+            ? format(sub.submittedAt.toDate(), "yyyy-MM-dd HH:mm:ss")
+            : "N/A";
+
+          // Escape quotes in strings
+          const safeString = (str) => {
+            if (str === null || str === undefined) return '""';
+            return `"${String(str).replace(/"/g, '""')}"`;
+          };
+
+          const row = [
+            safeString(sub.studentName),
+            safeString(sub.assessmentTitle),
+            sub.status,
+            sub.score,
+            sub.totalPoints || 0,
+            submittedAt,
+          ];
+
+          // Add answers
+          if (questions.length > 0) {
+            questions.forEach((question) => {
+              const answer = sub.answers?.find((a) => a.questionId === question.id);
+              let answerText = "";
+
+              if (answer) {
+                if (question.type === "multiple_choice") {
+                  if (typeof answer.selectedAnswer === 'object' && answer.selectedAnswer !== null) {
+                      answerText = answer.selectedAnswer.value || answer.selectedAnswer.label || JSON.stringify(answer.selectedAnswer);
+                  } else {
+                      answerText = answer.selectedAnswer || "";
+                  }
+                } else {
+                  answerText = answer.text || answer.answer || "";
+                }
+              }
+              row.push(safeString(answerText));
+            });
+          }
+
+          return row.join(",");
+        }),
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+
+      const date = format(new Date(), "yyyy-MM-dd");
+      const assessmentTitle = assessment?.title || "assessment";
+      const filename = `${assessmentTitle
+        .replace(/[^a-z0-9]/gi, "_")
+        .toLowerCase()}_submissions_${date}.csv`;
+
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Error exporting CSV:", error);
+      alert("Failed to export CSV");
+    }
+  };
+
+
 
   const StatusBadge = ({ status }) => {
     const colors = {
@@ -154,12 +307,9 @@ export default function AllSubmissionsPage() {
               className="border rounded-md px-2 py-1"
             >
               <option value="all">All Assessments</option>
-              {uniqueAssessments.map((id) => (
-                <option key={id} value={id}>
-                  {
-                    submissions.find((sub) => sub.assessmentId === id)
-                      ?.assessmentTitle
-                  }
+              {assessments.map((assessment) => (
+                <option key={assessment.id} value={assessment.id}>
+                  {assessment.title}
                 </option>
               ))}
             </select>
@@ -178,8 +328,38 @@ export default function AllSubmissionsPage() {
               />
               <MagnifyingGlassIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
             </div>
+            <button
+              onClick={handleExportCSV}
+              disabled={filters.assessment === "all"}
+              title={filters.assessment === "all" ? "Select an assessment to export" : "Export CSV"}
+              className={`flex items-center space-x-2 px-4 py-2 text-white rounded-md transition-colors whitespace-nowrap ${
+                filters.assessment === "all"
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700"
+              }`}
+            >
+              <ArrowDownTrayIcon className="h-5 w-5" />
+              <span>Export CSV</span>
+            </button>
           </div>
         </div>
+
+        {/* Bulk Actions Bar */}
+        {selectedSubmissions.size > 0 && (
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 flex items-center justify-between">
+            <span className="text-blue-800 font-medium">
+              {selectedSubmissions.size} submission
+              {selectedSubmissions.size !== 1 ? "s" : ""} selected
+            </span>
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              <TrashIcon className="h-4 w-4" />
+              <span>Delete Selected</span>
+            </button>
+          </div>
+        )}
 
         {/* Submissions Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -187,6 +367,18 @@ export default function AllSubmissionsPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={
+                        selectedSubmissions.size > 0 &&
+                        selectedSubmissions.size ===
+                          filteredAndSortedSubmissions.length
+                      }
+                      onChange={handleSelectAll}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     #
                   </th>
@@ -225,7 +417,7 @@ export default function AllSubmissionsPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-4">
+                    <td colSpan={7} className="text-center py-4">
                       Loading...
                     </td>
                   </tr>
@@ -235,6 +427,14 @@ export default function AllSubmissionsPage() {
                       key={submission.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedSubmissions.has(submission.id)}
+                          onChange={() => handleSelectSubmission(submission.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {index + 1}
                       </td>

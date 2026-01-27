@@ -99,9 +99,9 @@ export default function AssessmentList({ assessments, isLoading }) {
   };
 
   const getSortedAssessments = () => {
-    if (!assessments) return [];
+    if (!filteredAssessments) return [];
 
-    return [...assessments].sort((a, b) => {
+    return [...filteredAssessments].sort((a, b) => {
       let aVal = a[sortField];
       let bVal = b[sortField];
 
@@ -209,6 +209,7 @@ export default function AssessmentList({ assessments, isLoading }) {
                 </td>
                 <td className="px-6 py-4">
                   <StatusBadge
+                    assessment={assessment}
                     date={
                       typeof assessment.endDate === "string"
                         ? new Date(assessment.endDate)
@@ -268,7 +269,15 @@ export default function AssessmentList({ assessments, isLoading }) {
   );
 }
 
-function StatusBadge({ date }) {
+function StatusBadge({ date, assessment }) {
+  if (assessment?.type === "tutorial") {
+    return (
+      <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset bg-purple-50 text-purple-700 ring-purple-600/20">
+        Tutorial
+      </span>
+    );
+  }
+
   const now = new Date();
   const isActive = date && date > now;
   const status = isActive ? "Active" : "Expired";
