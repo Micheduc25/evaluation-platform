@@ -13,7 +13,7 @@ import {
   ChevronRightIcon
 } from "@heroicons/react/24/outline";
 import { deleteSubmission, getUserAssessments } from "@/firebase/utils";
-import { getSubmissions } from "@/services/submissionService";
+import { getSubmissions, getAllAssessmentSubmissions } from "@/services/submissionService";
 
 export default function AllSubmissionsPage() {
   const user = useSelector((state) => state.auth.user);
@@ -198,12 +198,59 @@ export default function AllSubmissionsPage() {
     });
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (filters.assessment === "all") {
       alert("Please select a specific assessment to export submissions.");
       return;
     }
-    alert("Exporting currently visible submissions. For full export, please use the Reports section.");
+
+    try {
+        setLoading(true);
+        const exportData = await getAllAssessmentSubmissions(filters.assessment);
+        
+        if (!exportData || exportData.length === 0) {
+            alert("No submissions found for this assessment.");
+            setLoading(false);
+            return;
+        }
+
+        // Define CSV headers
+        const headers = ["Registration Number", "Student Name", "Mark", "Total Points"];
+        
+        // Define CSV rows
+        const rows = exportData.map(sub => [
+            `"${sub.registrationNumber}"`, // Quote strings to handle commas
+            `"${sub.studentName}"`,
+            sub.score,
+            sub.totalPoints || "-"
+        ]);
+
+        // Combine headers and rows
+        const csvContent = [
+            headers.join(","),
+            ...rows.map(row => row.join(","))
+        ].join("\n");
+
+        // Create blob and download
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        
+        const assessmentTitle = assessments.find(a => a.id === filters.assessment)?.title || "Assessment";
+        const cleanTitle = assessmentTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        link.setAttribute("download", `${cleanTitle}_submissions.csv`);
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+    } catch (error) {
+        console.error("Export failed:", error);
+        alert("Failed to export CSV. Please try again.");
+    } finally {
+        setLoading(false);
+    }
   };
 
   const StatusBadge = ({ status }) => {
@@ -292,6 +339,17 @@ export default function AllSubmissionsPage() {
                </button>
            </div>
 
+          <div className="flex items-center ml-2">
+            <button
+              onClick={handleExportCSV}
+              disabled={filters.assessment === "all" || loading}
+              className="flex items-center px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Export CSV"
+            >
+              <ArrowDownTrayIcon className="h-5 w-5 mr-1" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+          </div>
         </div>
 
         {/* Bulk Actions Bar */}

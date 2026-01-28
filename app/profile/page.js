@@ -10,6 +10,7 @@ export default function ProfilePage() {
   const [formData, setFormData] = useState({
     displayName: "",
     email: "",
+    registrationNumber: "",
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -19,6 +20,7 @@ export default function ProfilePage() {
       setFormData({
         displayName: user.displayName || "",
         email: user.email || "",
+        registrationNumber: user.registrationNumber || "",
       });
     }
   }, [user]);
@@ -69,9 +71,23 @@ export default function ProfilePage() {
             name="email"
             value={formData.email}
             onChange={handleChange}
-            className="w-full p-2 border rounded"
+            className="w-full p-2 border rounded bg-gray-100"
             disabled
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Registration Number</label>
+          <input
+            type="text"
+            name="registrationNumber"
+            value={formData.registrationNumber}
+            onChange={handleChange}
+            placeholder="e.g. MAT123456"
+            className="w-full p-2 border rounded text-black"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            This number will be displayed on your exam submissions.
+          </p>
         </div>
         <button
           type="submit"

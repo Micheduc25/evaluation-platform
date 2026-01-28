@@ -142,6 +142,7 @@ export const getSubmissions = async ({
             ...sub,
             studentName: student.displayName || "Unknown Student",
             studentEmail: student.email,
+            registrationNumber: student.registrationNumber || "N/A",
             assessmentTitle: assessment.title || "Unknown Assessment",
             totalPoints: assessment.totalPoints || 0
         };
@@ -158,4 +159,60 @@ export const getSubmissions = async ({
     console.error("Error in getSubmissions service:", error);
     throw error;
   }
+};
+
+/**
+ * Fetches all submissions for a specific assessment for CSV export.
+ * Warning: Does not implement pagination. Use with caution on large datasets or implement batching if needed.
+ * 
+ * @param {string} assessmentId 
+ * @returns {Promise<Array>} Array of enriched submission objects
+ */
+export const getAllAssessmentSubmissions = async (assessmentId) => {
+    try {
+        const submissionsRef = collection(db, "submissions");
+        const q = query(
+            submissionsRef, 
+            where("assessmentId", "==", assessmentId),
+            orderBy("submittedAt", "desc")
+        );
+
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            return [];
+        }
+
+        const rawSubmissions = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        }));
+
+        // Batch fetch students
+        const studentIds = [...new Set(rawSubmissions.map((s) => s.studentId))];
+        const studentPromises = studentIds.map((uid) =>
+            getDoc(doc(db, "users", uid)).then(snap => ({id: uid, ...snap.data()}))
+        );
+        const students = await Promise.all(studentPromises);
+        const studentMap = students.reduce((acc, curr) => {
+            acc[curr.id] = curr;
+            return acc;
+        }, {});
+
+        // Combine data
+        return rawSubmissions.map(sub => {
+            const student = studentMap[sub.studentId] || {};
+            return {
+                ...sub,
+                studentName: student.displayName || "Unknown Student",
+                studentEmail: student.email,
+                registrationNumber: student.registrationNumber || "N/A",
+                // Score is already in sub
+            };
+        });
+
+    } catch (error) {
+        console.error("Error fetching all submissions for export:", error);
+        throw error;
+    }
 };
