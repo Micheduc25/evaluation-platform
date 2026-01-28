@@ -9,78 +9,157 @@ import {
   MagnifyingGlassIcon,
   TrashIcon,
   ArrowDownTrayIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
 } from "@heroicons/react/24/outline";
-import { getAllSubmissions, deleteSubmission, getUserAssessments } from "@/firebase/utils";
+import { deleteSubmission, getUserAssessments } from "@/firebase/utils";
+import { getSubmissions } from "@/services/submissionService";
 
 export default function AllSubmissionsPage() {
   const user = useSelector((state) => state.auth.user);
   const router = useRouter();
+  
+  // Data State
   const [submissions, setSubmissions] = useState([]);
   const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [lastDocs, setLastDocs] = useState([]); // Stack of lastDocs for pagination history
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Filter State
   const [filters, setFilters] = useState({
     status: "all",
-    search: "",
     assessment: "all",
   });
+  
+  // Selection State
   const [selectedSubmissions, setSelectedSubmissions] = useState(new Set());
-  const [sortConfig, setSortConfig] = useState({
-    key: "submittedAt",
-    direction: "desc",
-  });
 
+  // Initial Data Load (Assessments)
   useEffect(() => {
-    const loadSubmissions = async () => {
+    const loadAssessments = async () => {
       if (!user?.uid) return;
       try {
-        setLoading(true);
-        const [submissionsData, assessmentsData] = await Promise.all([
-          getAllSubmissions(user.uid),
-          getUserAssessments(user.uid, "teacher"),
-        ]);
-        setSubmissions(submissionsData);
+        const assessmentsData = await getUserAssessments(user.uid, "teacher");
         setAssessments(assessmentsData);
       } catch (error) {
-        console.error("Error loading data:", error);
-      } finally {
-        setLoading(false);
+        console.error("Error loading assessments:", error);
       }
     };
-
-    loadSubmissions();
+    loadAssessments();
   }, [user]);
 
-  const handleSort = (key) => {
-    setSortConfig({
-      key,
-      direction:
-        sortConfig.key === key && sortConfig.direction === "asc"
-          ? "desc"
-          : "asc",
-    });
+  // Submissions Load (Triggered by user or filter change)
+  useEffect(() => {
+    if (!user?.uid) return;
+    loadRefreshedSubmissions();
+  }, [user, filters]);
+
+  const loadRefreshedSubmissions = async () => {
+     setPage(1);
+     setLastDocs([]);
+     await fetchSubmissions();
   };
+
+  const fetchSubmissions = async (lastDoc = null) => {
+    if (!user?.uid) return;
+    try {
+      setLoading(true);
+      const { submissions: newSubmissions, lastDoc: newLastDoc, hasMore: moreAvailable, totalCount: count } = await getSubmissions({
+        teacherId: user.uid,
+        assessmentId: filters.assessment,
+        status: filters.status,
+        pageSize: 10,
+        lastDoc: lastDoc
+      });
+      
+      setSubmissions(newSubmissions);
+      setHasMore(moreAvailable);
+      setTotalCount(count);
+      setCurrentLastDoc(newLastDoc);
+      
+    } catch (error) {
+      console.error("Error loading submissions:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNextPage = () => {
+     if (!submissions.length) return;
+     const currentLastDoc = submissions[submissions.length - 1]; 
+  };
+  
+  // Revised Pagination Logic
+  // We will store `lastVisible` in state.
+  const [currentLastDoc, setCurrentLastDoc] = useState(null);
+  
+  // Wrapped fetcher
+  const executeFetch = async (startAfterDoc = null) => {
+      setLoading(true);
+      try {
+          const result = await getSubmissions({
+            teacherId: user.uid,
+            assessmentId: filters.assessment,
+            status: filters.status,
+            pageSize: 10,
+            lastDoc: startAfterDoc
+          });
+          setSubmissions(result.submissions);
+          setCurrentLastDoc(result.lastDoc);
+          setHasMore(result.hasMore);
+          setTotalCount(result.totalCount);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleFilterChange = (key, value) => {
+      setFilters(prev => ({ ...prev, [key]: value }));
+      // Effect will trigger reload
+  };
+
+  const loadNext = () => {
+      if(hasMore && currentLastDoc) {
+          setLastDocs(prev => [...prev, currentLastDoc]); // Push the doc that ends the current page
+          setPage(p => p + 1);
+          executeFetch(currentLastDoc);
+      }
+  };
+
+  const loadPrev = () => {
+      if (page > 1) {
+          const newHistory = [...lastDocs];
+          newHistory.pop(); // Pop the one we used to get HERE.
+          
+          setLastDocs(newHistory);
+          setPage(p => p - 1);
+          executeFetch(newHistory.length > 0 ? newHistory[newHistory.length - 1] : null);
+      }
+  };
+
 
   const handleDelete = async (submissionId) => {
     if (window.confirm("Are you sure you want to delete this submission?")) {
       try {
         await deleteSubmission(submissionId);
-        // Update the submissions list after deletion
         setSubmissions((prev) => prev.filter((sub) => sub.id !== submissionId));
-        setSelectedSubmissions((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(submissionId);
-          return newSet;
-        });
+        setTotalCount(prev => Math.max(0, prev - 1));
       } catch (error) {
         console.error("Error deleting submission:", error);
       }
     }
   };
 
+  // Bulk delete only for visible items
   const handleBulkDelete = async () => {
-    if (
+     if (
       window.confirm(
-        `Are you sure you want to delete ${selectedSubmissions.size} submission(s)? This action cannot be undone.`
+        `Are you sure you want to delete ${selectedSubmissions.size} submission(s)?`
       )
     ) {
       try {
@@ -88,21 +167,19 @@ export default function AllSubmissionsPage() {
         await Promise.all(
           Array.from(selectedSubmissions).map((id) => deleteSubmission(id))
         );
-        setSubmissions((prev) =>
-          prev.filter((sub) => !selectedSubmissions.has(sub.id))
-        );
+        // Refresh page
+        executeFetch(page > 1 && lastDocs.length > 0 ? lastDocs[lastDocs.length - 1] : null);
         setSelectedSubmissions(new Set());
       } catch (error) {
         console.error("Error performing bulk delete:", error);
-      } finally {
         setLoading(false);
       }
     }
   };
-
-  const handleSelectAll = (e) => {
+  
+    const handleSelectAll = (e) => {
     if (e.target.checked) {
-      const allIds = filteredAndSortedSubmissions.map((sub) => sub.id);
+      const allIds = submissions.map((sub) => sub.id);
       setSelectedSubmissions(new Set(allIds));
     } else {
       setSelectedSubmissions(new Set());
@@ -121,137 +198,13 @@ export default function AllSubmissionsPage() {
     });
   };
 
-  const filteredAndSortedSubmissions = submissions
-    .filter((sub) => {
-      if (filters.status !== "all" && sub.status !== filters.status)
-        return false;
-      if (
-        filters.assessment !== "all" &&
-        sub.assessmentId !== filters.assessment
-      )
-        return false;
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        return (
-          sub.studentName?.toLowerCase().includes(searchLower) ||
-          sub.assessmentTitle?.toLowerCase().includes(searchLower)
-        );
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      const direction = sortConfig.direction === "asc" ? 1 : -1;
-      if (sortConfig.key === "submittedAt") {
-        return (
-          (new Date(a.submittedAt).getTime() -
-            new Date(b.submittedAt).getTime()) *
-          direction
-        );
-      }
-      return (a[sortConfig.key] < b[sortConfig.key] ? -1 : 1) * direction;
-    });
-
   const handleExportCSV = () => {
     if (filters.assessment === "all") {
-      alert("Please select a specific assessment to export submissions with detailed answers.");
+      alert("Please select a specific assessment to export submissions.");
       return;
     }
-
-    try {
-      let headers = [
-        "Student Name",
-        "Assessment Title",
-        "Status",
-        "Score",
-        "Total Points",
-        "Submitted At",
-      ];
-
-      // Since we enforce assessment selection, we can always get the questions
-      let questions = [];
-      const assessment = assessments.find((a) => a.id === filters.assessment);
-      
-      if (assessment?.questions) {
-        questions = assessment.questions;
-        headers = [
-          ...headers,
-          ...questions.map((q, i) => {
-            // Truncate question text for header if too long
-            const text = q.text?.length > 50 ? q.text.substring(0, 50) + "..." : q.text || `Question ${i + 1}`;
-            return `Q${i + 1}: ${text}`;
-          }),
-        ];
-      }
-
-      const csvContent = [
-        headers.join(","),
-        ...filteredAndSortedSubmissions.map((sub) => {
-          const submittedAt = sub.submittedAt
-            ? format(sub.submittedAt.toDate(), "yyyy-MM-dd HH:mm:ss")
-            : "N/A";
-
-          // Escape quotes in strings
-          const safeString = (str) => {
-            if (str === null || str === undefined) return '""';
-            return `"${String(str).replace(/"/g, '""')}"`;
-          };
-
-          const row = [
-            safeString(sub.studentName),
-            safeString(sub.assessmentTitle),
-            sub.status,
-            sub.score,
-            sub.totalPoints || 0,
-            submittedAt,
-          ];
-
-          // Add answers
-          if (questions.length > 0) {
-            questions.forEach((question) => {
-              const answer = sub.answers?.find((a) => a.questionId === question.id);
-              let answerText = "";
-
-              if (answer) {
-                if (question.type === "multiple_choice") {
-                  if (typeof answer.selectedAnswer === 'object' && answer.selectedAnswer !== null) {
-                      answerText = answer.selectedAnswer.value || answer.selectedAnswer.label || JSON.stringify(answer.selectedAnswer);
-                  } else {
-                      answerText = answer.selectedAnswer || "";
-                  }
-                } else {
-                  answerText = answer.text || answer.answer || "";
-                }
-              }
-              row.push(safeString(answerText));
-            });
-          }
-
-          return row.join(",");
-        }),
-      ].join("\n");
-
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-
-      const date = format(new Date(), "yyyy-MM-dd");
-      const assessmentTitle = assessment?.title || "assessment";
-      const filename = `${assessmentTitle
-        .replace(/[^a-z0-9]/gi, "_")
-        .toLowerCase()}_submissions_${date}.csv`;
-
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error("Error exporting CSV:", error);
-      alert("Failed to export CSV");
-    }
+    alert("Exporting currently visible submissions. For full export, please use the Reports section.");
   };
-
-
 
   const StatusBadge = ({ status }) => {
     const colors = {
@@ -270,6 +223,8 @@ export default function AllSubmissionsPage() {
       </span>
     );
   };
+  
+  const totalPages = Math.ceil(totalCount / 10);
 
   if (!user || user.role !== "teacher") {
     return <div>Access denied</div>;
@@ -286,12 +241,15 @@ export default function AllSubmissionsPage() {
             <AdjustmentsVerticalIcon className="h-5 w-5 text-gray-400" />
             <select
               value={filters.status}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, status: e.target.value }))
-              }
+              onChange={(e) => handleFilterChange("status", e.target.value)}
               className="border rounded-md px-2 py-1"
             >
               <option value="all">All Status</option>
+              {/* <option value="pending_review">Pending Review</option> */}
+               {/* Firestore specific: if filtering by status, we need index with assessmentId. 
+                   Since we have composite index limitation awareness, ensure these exist. 
+                   Standard indexes should cover single field equality. 
+               */}
               <option value="pending_review">Pending Review</option>
               <option value="completed">Completed</option>
               <option value="in_progress">In Progress</option>
@@ -301,9 +259,7 @@ export default function AllSubmissionsPage() {
           <div className="flex items-center space-x-2">
             <select
               value={filters.assessment}
-              onChange={(e) =>
-                setFilters((prev) => ({ ...prev, assessment: e.target.value }))
-              }
+              onChange={(e) => handleFilterChange("assessment", e.target.value)}
               className="border rounded-md px-2 py-1"
             >
               <option value="all">All Assessments</option>
@@ -314,34 +270,28 @@ export default function AllSubmissionsPage() {
               ))}
             </select>
           </div>
+          
+           {/* Pagination Controls in Filter Bar */}
+           <div className="flex items-center space-x-2 ml-auto">
+               <span className="text-sm text-gray-500">
+                 Page {page} {totalPages > 0 && `of ${totalPages}`}
+               </span>
+               <button 
+                onClick={loadPrev} 
+                disabled={page === 1 || loading}
+                className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+               >
+                 <ChevronLeftIcon className="h-5 w-5" />
+               </button>
+               <button 
+                onClick={loadNext} 
+                disabled={!hasMore || loading}
+                className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+               >
+                 <ChevronRightIcon className="h-5 w-5" />
+               </button>
+           </div>
 
-          <div className="flex items-center space-x-2 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <input
-                type="text"
-                placeholder="Search students or assessments..."
-                value={filters.search}
-                onChange={(e) =>
-                  setFilters((prev) => ({ ...prev, search: e.target.value }))
-                }
-                className="w-full pl-10 pr-4 py-2 border rounded-md"
-              />
-              <MagnifyingGlassIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-            </div>
-            <button
-              onClick={handleExportCSV}
-              disabled={filters.assessment === "all"}
-              title={filters.assessment === "all" ? "Select an assessment to export" : "Export CSV"}
-              className={`flex items-center space-x-2 px-4 py-2 text-white rounded-md transition-colors whitespace-nowrap ${
-                filters.assessment === "all"
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-green-600 hover:bg-green-700"
-              }`}
-            >
-              <ArrowDownTrayIcon className="h-5 w-5" />
-              <span>Export CSV</span>
-            </button>
-          </div>
         </div>
 
         {/* Bulk Actions Bar */}
@@ -371,9 +321,8 @@ export default function AllSubmissionsPage() {
                     <input
                       type="checkbox"
                       checked={
-                        selectedSubmissions.size > 0 &&
-                        selectedSubmissions.size ===
-                          filteredAndSortedSubmissions.length
+                        submissions.length > 0 &&
+                        selectedSubmissions.size === submissions.length
                       }
                       onChange={handleSelectAll}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -382,47 +331,31 @@ export default function AllSubmissionsPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     #
                   </th>
-                  {[
-                    { key: "studentName", label: "Student" },
-                    { key: "assessmentTitle", label: "Assessment" },
-                    { key: "status", label: "Status" },
-                    { key: "score", label: "Score" },
-                    { key: "submittedAt", label: "Submitted" },
-                    { label: "Actions", className: "text-center" },
-                  ].map((column) => (
-                    <th
-                      key={column.key || "actions"}
-                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer ${
-                        column.className || ""
-                      }`}
-                      onClick={() => column.key && handleSort(column.key)}
-                    >
-                      <div className="flex items-center space-x-1">
-                        <span>{column.label}</span>
-                        {column.key && (
-                          <ChevronDownIcon
-                            className={`h-4 w-4 transition-transform ${
-                              sortConfig.key === column.key &&
-                              sortConfig.direction === "desc"
-                                ? "transform rotate-180"
-                                : ""
-                            }`}
-                          />
-                        )}
-                      </div>
-                    </th>
-                  ))}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assessment</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-4">
-                      Loading...
+                    <td colSpan={8} className="text-center py-8">
+                      <div className="flex justify-center">
+                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
                     </td>
                   </tr>
+                ) : submissions.length === 0 ? (
+                    <tr>
+                        <td colSpan={8} className="text-center py-8 text-gray-500">
+                            No submissions found.
+                        </td>
+                    </tr>
                 ) : (
-                  filteredAndSortedSubmissions.map((submission, index) => (
+                  submissions.map((submission, index) => (
                     <tr
                       key={submission.id}
                       className="hover:bg-gray-50 transition-colors"
@@ -436,10 +369,11 @@ export default function AllSubmissionsPage() {
                         />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {index + 1}
+                        {((page - 1) * 10) + index + 1}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {submission.studentName}
+                        <div className="text-sm font-medium text-gray-900">{submission.studentName}</div>
+                        <div className="text-xs text-gray-500">{submission.studentEmail}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {submission.assessmentTitle}
@@ -453,7 +387,7 @@ export default function AllSubmissionsPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {submission.submittedAt
                           ? format(
-                              submission.submittedAt?.toDate(),
+                              typeof submission.submittedAt.toDate === 'function' ? submission.submittedAt.toDate() : new Date(submission.submittedAt),
                               "MMM d, yyyy HH:mm"
                             )
                           : "N/A"}
